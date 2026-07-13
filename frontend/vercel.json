@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://gtavi-api-xxxxxxxxxx-ew.a.run.app/api/:path*"
+      "destination": "https://gtavi-api-876944613413.europe-west1.run.app/api/:path*"
     }
   ]
 }

@@ -9,7 +9,7 @@
 # -------------------------------------------------------
 # 1. CONFIGURATION — set these once
 # -------------------------------------------------------
-export GCP_PROJECT="gtavi-waiting-room"           # your GCP project ID
+export GCP_PROJECT="gtavi-waiting-room-502319"           # your GCP project ID
 export GCP_REGION="europe-west1"                   # closest to you (CH)
 export SERVICE_NAME="gtavi-api"                    # Cloud Run service name
 export JOB_NAME="gtavi-monitor"                    # Cloud Scheduler job name
@@ -73,7 +73,7 @@ gcloud run deploy $SERVICE_NAME \
   --set-env-vars="MONITORING_ENABLED=true" \
   --set-env-vars="FCM_ENABLED=false" \
   --set-env-vars="DEEPSEEK_BASE_URL=https://api.deepseek.com" \
-  --set-env-vars="DEEPSEEK_MODEL=deepseek-chat" \
+  --set-env-vars="DEEPSEEK_MODEL=deepseek-v4-pro" \
   --set-secrets="DEEPSEEK_API_KEY=DEEPSEEK_API_KEY:latest" \
   --set-secrets="NEO4J_URI=NEO4J_URI:latest" \
   --set-secrets="NEO4J_USERNAME=NEO4J_USERNAME:latest" \
