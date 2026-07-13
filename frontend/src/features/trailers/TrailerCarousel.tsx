@@ -1,125 +1,132 @@
+import { useState } from 'react';
 import type { Trailer } from '../../types/game';
 
-interface TrailerCardProps {
-  trailer: Trailer;
-  isHero?: boolean;
-  isNew?: boolean;
+/** Extract YouTube video ID from URL like https://www.youtube.com/watch?v=QdBZY2fkU-0 */
+function youtubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v');
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1);
+  } catch { /* ignore */ }
+  return null;
 }
 
-export function TrailerCard({ trailer, isHero = false, isNew = false }: TrailerCardProps) {
-  const date = new Date(trailer.publicationDate).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'short', day: 'numeric',
-  });
-
-  if (isHero) {
-    return (
-      <a
-        href={trailer.sourceUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block relative rounded-xl overflow-hidden bg-bg-card card-hover group"
-      >
-        <div className="aspect-video bg-bg-primary/50">
-          {trailer.thumbnailUrl && (
-            <img
-              src={trailer.thumbnailUrl}
-              alt={trailer.title}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-          )}
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-bg-primary via-transparent to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs uppercase tracking-wider text-accent-teal font-semibold">
-              {trailer.mediaType}
-            </span>
-            {isNew && (
-              <span className="text-xs font-bold bg-accent-pink text-text-dark px-2 py-0.5 rounded-full">
-                NEW
-              </span>
-            )}
-          </div>
-          <h3 className="text-lg sm:text-xl font-bold text-text-primary group-hover:text-accent-pink transition-colors">
-            {trailer.title}
-          </h3>
-          <p className="text-sm text-text-muted mt-1">{date}</p>
-        </div>
-      </a>
-    );
-  }
-
-  return (
-    <a
-      href={trailer.sourceUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex-shrink-0 w-[260px] sm:w-[300px] rounded-lg overflow-hidden bg-bg-card card-hover group"
-    >
-      <div className="aspect-video bg-bg-primary/50">
-        {trailer.thumbnailUrl && (
-          <img
-            src={trailer.thumbnailUrl}
-            alt={trailer.title}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        )}
-      </div>
-      <div className="p-3">
-        <div className="flex items-center gap-2 mb-1">
-          {isNew && (
-            <span className="text-xs font-bold bg-accent-pink text-text-dark px-2 py-0.5 rounded-full">
-              NEW
-            </span>
-          )}
-          <span className="text-xs text-text-muted">{date}</span>
-        </div>
-        <h4 className="text-sm font-semibold text-text-primary group-hover:text-accent-pink transition-colors line-clamp-2">
-          {trailer.title}
-        </h4>
-      </div>
-    </a>
-  );
-}
-
-interface TrailerCarouselProps {
+interface Props {
   trailers: Trailer[];
   latestTrailer: Trailer | null;
 }
 
-export function TrailerCarousel({ trailers, latestTrailer }: TrailerCarouselProps) {
-  if (trailers.length === 0) return null;
+export function TrailerCarousel({ trailers, latestTrailer }: Props) {
+  const [active, setActive] = useState(0);
 
-  // Show latest as hero, rest in carousel
-  const hero = latestTrailer || trailers[0];
-  const carouselItems = latestTrailer
-    ? trailers.filter(t => t.id !== latestTrailer.id)
-    : trailers.slice(1);
+  // Put the latest trailer first if available
+  const ordered = latestTrailer && trailers.length > 0
+    ? [latestTrailer, ...trailers.filter(t => t.id !== latestTrailer.id)]
+    : trailers;
+
+  if (ordered.length === 0) return null;
+
+  const current = ordered[active];
+  const videoId = youtubeId(current.videoUrl);
+  const date = new Date(current.publicationDate).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  });
 
   const isNew = (trailer: Trailer) => {
     const pubDate = new Date(trailer.publicationDate).getTime();
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return pubDate > weekAgo;
+    return pubDate > Date.now() - 7 * 24 * 60 * 60 * 1000;
   };
+
+  const goPrev = () => setActive(a => (a === 0 ? ordered.length - 1 : a - 1));
+  const goNext = () => setActive(a => (a === ordered.length - 1 ? 0 : a + 1));
+  const goTo = (i: number) => setActive(i);
 
   return (
     <section>
-      <h2 className="text-xl sm:text-2xl font-bold text-accent-gold mb-4">
-        Official Trailers
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-accent-gold">
+          Official Trailers
+        </h2>
+        <span className="text-sm text-text-muted">
+          {active + 1} / {ordered.length}
+        </span>
+      </div>
 
-      {/* Hero */}
-      <TrailerCard trailer={hero} isHero isNew={isNew(hero)} />
-
-      {/* Carousel */}
-      {carouselItems.length > 0 && (
-        <div className="mt-4 flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory scrollbar-hide">
-          {carouselItems.map(t => (
-            <div key={t.id} className="snap-start">
-              <TrailerCard trailer={t} isNew={isNew(t)} />
+      {/* Video player */}
+      <div className="relative rounded-xl overflow-hidden bg-black">
+        <div className="aspect-video">
+          {videoId ? (
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=0&rel=0&modestbranding=1`}
+              title={current.title}
+              allow="accelerometer; encrypted-media; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-bg-primary/80 text-text-muted">
+              <div className="text-center">
+                <span className="text-4xl block mb-2">🎬</span>
+                <p>Video not available</p>
+                {current.sourceUrl && (
+                  <a href={current.sourceUrl} target="_blank" rel="noopener noreferrer"
+                     className="text-accent-teal text-sm underline mt-1 inline-block">
+                    Watch on source
+                  </a>
+                )}
+              </div>
             </div>
+          )}
+        </div>
+
+        {/* Nav arrows */}
+        {ordered.length > 1 && (
+          <>
+            <button
+              onClick={goPrev}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 text-white hover:bg-black/80 flex items-center justify-center transition-colors"
+              aria-label="Previous trailer"
+            >
+              ‹
+            </button>
+            <button
+              onClick={goNext}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 text-white hover:bg-black/80 flex items-center justify-center transition-colors"
+              aria-label="Next trailer"
+            >
+              ›
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Info bar */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <h3 className="text-base font-semibold text-text-primary">
+          {current.title}
+        </h3>
+        {isNew(current) && (
+          <span className="text-xs font-bold bg-accent-pink text-text-dark px-2 py-0.5 rounded-full">
+            NEW
+          </span>
+        )}
+        <span className="text-sm text-text-muted ml-auto">{date}</span>
+      </div>
+
+      {/* Dot navigation */}
+      {ordered.length > 1 && (
+        <div className="flex justify-center gap-2 mt-4">
+          {ordered.map((t, i) => (
+            <button
+              key={t.id}
+              onClick={() => goTo(i)}
+              className={`w-2.5 h-2.5 rounded-full transition-all ${
+                i === active
+                  ? 'bg-accent-pink scale-125'
+                  : 'bg-text-muted/40 hover:bg-text-muted/60'
+              }`}
+              aria-label={`Go to trailer ${i + 1}`}
+            />
           ))}
         </div>
       )}
