@@ -45,8 +45,11 @@ public class DiffEngine {
         // Detect release date changes
         events.addAll(diffReleaseDate(sourceCode, sourceUrl, previous, current));
 
-        // Detect trailer changes
-        events.addAll(diffTrailers(sourceCode, sourceUrl, previous, current));
+        // Detect trailer changes — only for video sources
+        if (sourceCode.equals("ROCKSTAR_MEDIA") || sourceCode.equals("ROCKSTAR_YOUTUBE")
+            || current.has("videos")) {
+            events.addAll(diffTrailers(sourceCode, sourceUrl, previous, current));
+        }
 
         // Detect pre-order changes
         events.addAll(diffPreorder(sourceCode, sourceUrl, previous, current));
@@ -128,9 +131,9 @@ public class DiffEngine {
                                             JsonNode prev, JsonNode curr) {
         List<ChangeEvent> events = new ArrayList<>();
 
-        JsonNode prevVideos = prev.get("videos");
+        JsonNode prevVideos = prev != null ? prev.get("videos") : null;
         JsonNode currVideos = curr.get("videos");
-        if (prevVideos == null || currVideos == null) return events;
+        if (currVideos == null) return events;
 
         Set<String> prevTitles = videoTitles(prevVideos);
         Set<String> currTitles = videoTitles(currVideos);
@@ -139,19 +142,62 @@ public class DiffEngine {
         added.removeAll(prevTitles);
 
         for (String title : added) {
-            String mediaType = getMediaType(title, currVideos);
+            // For YouTube channel, only care about GTA VI videos
+            if (sourceCode.equals("ROCKSTAR_YOUTUBE") && !isGtaViRelated(title)) {
+                continue;
+            }
+
+            String videoUrl = getVideoUrl(title, currVideos);
+            String mediaType = detectGtaViMediaType(title, currVideos);
             String eventType = "TRAILER".equals(mediaType) ? "NEW_TRAILER" : "NEW_OFFICIAL_VIDEO";
             String priority = "TRAILER".equals(mediaType) ? "MAJOR" : "NEWS";
+
+            String evidenceUrl = videoUrl != null ? videoUrl : sourceUrl;
 
             events.add(createEvent(sourceCode, sourceUrl,
                 eventType, priority,
                 "New " + mediaType.toLowerCase() + ": " + title,
                 "A new official GTA VI " + mediaType.toLowerCase() + " has been published.",
                 null, title,
-                "VIDEO:" + sanitizeKey(title)));
+                "VIDEO:" + sanitizeKey(title),
+                evidenceUrl));
         }
 
         return events;
+    }
+
+    /** Check if a video title is related to GTA VI. */
+    private boolean isGtaViRelated(String title) {
+        String lower = title.toLowerCase();
+        return lower.contains("gta vi") || lower.contains("grand theft auto vi")
+            || lower.contains("gta 6") || lower.contains("grand theft auto 6")
+            || lower.contains("trailer") && (lower.contains("gta") || lower.contains("grand theft auto"));
+    }
+
+    /** Try to extract video URL from the JSON nodes. */
+    private String getVideoUrl(String title, JsonNode videos) {
+        for (JsonNode v : videos) {
+            if (v.has("title") && v.get("title").asText().equals(title)) {
+                if (v.has("videoUrl")) return v.get("videoUrl").asText();
+                if (v.has("url")) return v.get("url").asText();
+            }
+        }
+        return null;
+    }
+
+    /** Detect media type: TRAILER, GAMEPLAY, or OTHER_VIDEO. */
+    private String detectGtaViMediaType(String title, JsonNode videos) {
+        for (JsonNode v : videos) {
+            if (v.has("title") && v.get("title").asText().equals(title)
+                && v.has("mediaType")) {
+                return v.get("mediaType").asText();
+            }
+        }
+        // Heuristic fallback
+        String lower = title.toLowerCase();
+        if (lower.contains("trailer")) return "TRAILER";
+        if (lower.contains("gameplay")) return "GAMEPLAY";
+        return "OTHER_VIDEO";
     }
 
     private List<ChangeEvent> diffPreorder(String sourceCode, String sourceUrl,
@@ -273,6 +319,16 @@ public class DiffEngine {
                                      String title, String description,
                                      String oldValue, String newValue,
                                      String deduplicationKey) {
+        return createEvent(sourceCode, sourceUrl, eventType, priority,
+            title, description, oldValue, newValue, deduplicationKey, sourceUrl);
+    }
+
+    private ChangeEvent createEvent(String sourceCode, String sourceUrl,
+                                     String eventType, String priority,
+                                     String title, String description,
+                                     String oldValue, String newValue,
+                                     String deduplicationKey,
+                                     String evidenceUrl) {
         ChangeEvent event = new ChangeEvent();
         event.setGameCode("GTA_VI");
         event.setSourceCode(sourceCode);
@@ -282,7 +338,7 @@ public class DiffEngine {
         event.setDescription(description);
         event.setOldValue(oldValue);
         event.setNewValue(newValue);
-        event.setEvidenceUrl(sourceUrl);
+        event.setEvidenceUrl(evidenceUrl);
         event.setDeduplicationKey(deduplicationKey);
         event.setDetectedAt(OffsetDateTime.now());
         event.setUserVisible(true);

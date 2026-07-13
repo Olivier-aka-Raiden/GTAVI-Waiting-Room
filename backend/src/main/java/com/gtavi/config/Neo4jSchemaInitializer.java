@@ -172,6 +172,9 @@ public class Neo4jSchemaInitializer {
     }
 
     private void seedTrailers(Session session) {
+        // Clean up old fake trailer URL, then re-seed with correct one
+        session.run("MATCH (t:Trailer {id: 'trailer-2'}) SET t.videoUrl = 'https://www.youtube.com/watch?v=VQRLujxTm3c', t.thumbnailUrl = 'https://img.youtube.com/vi/VQRLujxTm3c/maxresdefault.jpg', t.updatedAt = datetime()");
+
         session.run("""
             MERGE (t:Trailer {id: 'trailer-1'})
             SET t.gameCode = 'GTA_VI',
@@ -192,10 +195,10 @@ public class Neo4jSchemaInitializer {
                 t.title = 'Grand Theft Auto VI Trailer 2',
                 t.mediaType = 'TRAILER',
                 t.official = true,
-                t.publicationDate = datetime('2025-05-06T00:00:00Z'),
-                t.videoUrl = 'https://www.youtube.com/watch?v=3k9Fm4qL5s8',
+                t.publicationDate = datetime('2024-12-04T00:00:00Z'),
+                t.videoUrl = 'https://www.youtube.com/watch?v=VQRLujxTm3c',
                 t.sourceUrl = 'https://www.rockstargames.com/VI/media/videos',
-                t.thumbnailUrl = 'https://img.youtube.com/vi/3k9Fm4qL5s8/maxresdefault.jpg',
+                t.thumbnailUrl = 'https://img.youtube.com/vi/VQRLujxTm3c/maxresdefault.jpg',
                 t.discoveredAt = coalesce(t.discoveredAt, datetime()),
                 t.createdAt = coalesce(t.createdAt, datetime()),
                 t.updatedAt = datetime()
@@ -287,9 +290,9 @@ public class Neo4jSchemaInitializer {
                 priority: 'MAJOR',
                 title: 'Trailer 2 released',
                 description: 'Rockstar published the second official GTA VI trailer.',
-                evidenceUrl: 'https://www.rockstargames.com/VI/media/videos',
+                evidenceUrl: 'https://www.youtube.com/watch?v=VQRLujxTm3c',
                 deduplicationKey: 'NEW_TRAILER:trailer-2',
-                detectedAt: datetime('2025-05-06T00:00:00Z'),
+                detectedAt: datetime('2024-12-04T00:00:00Z'),
                 userVisible: true,
                 notificationEligible: true,
                 createdAt: datetime()
