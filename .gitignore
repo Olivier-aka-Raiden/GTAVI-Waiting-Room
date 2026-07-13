@@ -41,6 +41,7 @@ replay_pid*
 android/
 ios/
 .capacitor/
+*.tsbuildinfo
 
 # Firebase
 google-services.json
@@ -48,6 +49,9 @@ GoogleService-Info.plist
 
 # Test
 coverage/
+
+# Frontend build
+dist/
 
 # Misc
 .cache/

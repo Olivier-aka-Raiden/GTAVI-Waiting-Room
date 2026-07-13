@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* ============================================================
+   GTA VI Waiting Room — Design Tokens
+   Extracted from https://www.rockstargames.com/VI/
+   ============================================================ */
+
+@theme {
+  --color-bg-primary: #111117;
+  --color-bg-card: #0C0D1B;
+  --color-bg-overlay: rgba(0, 0, 0, 0.6);
+
+  --color-accent-pink: #FFB2C6;
+  --color-accent-purple: #4B2F54;
+  --color-accent-gold: #FFF9CB;
+  --color-accent-orange: #FFD4A8;
+  --color-accent-teal: #E6FFA3;
+
+  --color-text-primary: #FFFFFF;
+  --color-text-muted: #D9D1F6;
+  --color-text-dark: #0C0D1B;
+
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+}
+
+/* === Base styles === */
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* === Countdown digit style === */
+.countdown-digit {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+/* === Glow effect for accent elements === */
+.glow-pink {
+  box-shadow: 0 0 20px rgba(255, 178, 198, 0.3), 0 0 60px rgba(255, 178, 198, 0.1);
+}
+
+.glow-teal {
+  box-shadow: 0 0 20px rgba(230, 255, 163, 0.2);
+}
+
+/* === Card hover effect === */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* === Scrollbar styling === */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 178, 198, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 178, 198, 0.5);
+}
