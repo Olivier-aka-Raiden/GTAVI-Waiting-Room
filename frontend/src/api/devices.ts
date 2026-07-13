@@ -2,7 +2,9 @@
 // GTA VI Waiting Room — Notification API client
 // ============================================================
 
-const BASE = '/api/v1';
+import { API_BASE } from './config';
+
+const BASE = `${API_BASE}/api/v1`;
 
 async function postJson(url: string, body: unknown) {
   const res = await fetch(url, {

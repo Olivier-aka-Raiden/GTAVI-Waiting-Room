@@ -3,8 +3,9 @@
 // ============================================================
 
 import type { GameOverview, Trailer, Edition, EventsPage } from '../types/game';
+import { API_BASE } from './config';
 
-const BASE = '/api/v1';
+const BASE = `${API_BASE}/api/v1`;
 
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
