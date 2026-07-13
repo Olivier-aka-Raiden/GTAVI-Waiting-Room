@@ -74,6 +74,11 @@ public class MonitoringOrchestrator {
                     }
                     eventsCreated += events.size();
 
+                    // Persist retailer offers from product data
+                    if (isRetailer(monitor.sourceCode())) {
+                        persistOffers(monitor.sourceCode(), result.normalizedData());
+                    }
+
                     successful++;
                     Log.infof("Monitor %s: SUCCESS (hash=%s, %d events)",
                         monitor.sourceCode(), hash != null ? hash.substring(0, 8) : "null",
@@ -199,6 +204,100 @@ public class MonitoringOrchestrator {
                     Map.entry("notificationEligible", event.isNotificationEligible())
                 ));
         }
+    }
+
+    private boolean isRetailer(String sourceCode) {
+        return sourceCode.equals("PS_STORE") || sourceCode.equals("XBOX_STORE")
+            || sourceCode.equals("ROCKSTAR_STORE") || sourceCode.equals("GALAXUS")
+            || sourceCode.equals("WOG") || sourceCode.equals("AMAZON_FR");
+    }
+
+    /**
+     * Persist extracted product data as RetailOffer nodes in Neo4j.
+     * Matches product names to known editions by name similarity.
+     */
+    private void persistOffers(String sourceCode, JsonNode data) {
+        JsonNode products = data.get("products");
+        if (products == null || !products.isArray()) return;
+
+        List<String> knownEditionIds = getEditionIds();
+
+        try (var session = driver.session()) {
+            for (JsonNode p : products) {
+                String productName = p.has("name") ? p.get("name").asText() : null;
+                if (productName == null) continue;
+
+                String editionId = matchEdition(productName, knownEditionIds);
+                if (editionId == null) {
+                    Log.debugf("Could not match product '%s' to any known edition", productName);
+                    continue;
+                }
+
+                String url = p.has("url") ? p.get("url").asText() : null;
+                String platform = p.has("platform") ? p.get("platform").asText() : null;
+                String availability = p.has("availability") ? p.get("availability").asText() : "UNKNOWN";
+                String priceText = p.has("price") ? p.get("price").asText(null) : null;
+                String currency = p.has("currency") ? p.get("currency").asText("CHF") : "CHF";
+
+                String offerId = sourceCode + ":" + editionId;
+
+                session.run("""
+                    MERGE (o:RetailOffer {id: $id})
+                    SET o.editionId = $editionId,
+                        o.retailerCode = $retailerCode,
+                        o.platform = $platform,
+                        o.countryCode = $country,
+                        o.price = $price,
+                        o.currency = $currency,
+                        o.url = $url,
+                        o.availabilityStatus = $availability,
+                        o.preorderAvailable = $preorder,
+                        o.lastSuccessfulCheckAt = datetime(),
+                        o.lastChangedAt = coalesce(o.lastChangedAt, datetime()),
+                        o.updatedAt = datetime()
+                    ON CREATE SET o.createdAt = datetime()
+                    """, Map.ofEntries(
+                        Map.entry("id", offerId),
+                        Map.entry("editionId", editionId),
+                        Map.entry("retailerCode", sourceCode),
+                        Map.entry("platform", platform != null ? platform : ""),
+                        Map.entry("country", "CH"),
+                        Map.entry("price", priceText != null ? Double.parseDouble(priceText) : null),
+                        Map.entry("currency", currency),
+                        Map.entry("url", url != null ? url : ""),
+                        Map.entry("availability", availability),
+                        Map.entry("preorder", "PREORDER_AVAILABLE".equals(availability)
+                            || "IN_STOCK".equals(availability))
+                    ));
+            }
+        }
+        Log.debugf("Persisted %d offers for retailer %s",
+            products.size(), sourceCode);
+    }
+
+    /** Get all edition IDs from Neo4j. */
+    private List<String> getEditionIds() {
+        try (var session = driver.session()) {
+            return session.run("MATCH (e:Edition) RETURN e.id AS id")
+                .list(r -> r.get("id").asString());
+        }
+    }
+
+    /** Match a product name to the closest edition ID by keyword. */
+    private String matchEdition(String productName, List<String> editionIds) {
+        String lower = productName.toLowerCase().replaceAll("[^a-z]", "");
+        for (String id : editionIds) {
+            if (id.contains("standard") && lower.contains("standard")) return id;
+            if (id.contains("ultimate") && lower.contains("ultimate")) return id;
+            if (id.contains("collector") && lower.contains("collector")) return id;
+            if (id.contains("deluxe") && lower.contains("deluxe")) return id;
+        }
+        // Fallback: if product name contains no edition keyword, assume Standard
+        if (!lower.contains("ultimate") && !lower.contains("collector")
+            && !lower.contains("deluxe")) {
+            return editionIds.stream().filter(id -> id.contains("standard")).findFirst().orElse(null);
+        }
+        return null;
     }
 
     public record MonitoringRunSummary(
