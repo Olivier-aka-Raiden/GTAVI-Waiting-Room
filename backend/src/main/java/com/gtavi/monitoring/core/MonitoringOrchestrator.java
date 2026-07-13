@@ -6,7 +6,7 @@ import com.gtavi.monitoring.diff.DiffEngine;
 import com.gtavi.service.GameService;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
+import jakarta.enterprise.inject.Instance;
 import org.neo4j.driver.Driver;
 
 import java.time.OffsetDateTime;
@@ -20,21 +20,24 @@ import java.util.*;
 @ApplicationScoped
 public class MonitoringOrchestrator {
 
-    @Inject
-    Driver driver;
+    private final Driver driver;
+    private final Normalizer normalizer;
+    private final DiffEngine diffEngine;
+    private final GameService gameService;
+    private final Instance<GameSourceMonitor> allMonitors;
 
-    @Inject
-    Normalizer normalizer;
-
-    @Inject
-    DiffEngine diffEngine;
-
-    @Inject
-    GameService gameService;
+    public MonitoringOrchestrator(Driver driver, Normalizer normalizer,
+                                   DiffEngine diffEngine, GameService gameService,
+                                   Instance<GameSourceMonitor> allMonitors) {
+        this.driver = driver;
+        this.normalizer = normalizer;
+        this.diffEngine = diffEngine;
+        this.gameService = gameService;
+        this.allMonitors = allMonitors;
+    }
 
     /**
      * Run a monitoring check for all due sources.
-     * Returns summary statistics.
      */
     public MonitoringRunSummary runCheck() {
         return runCheck(Set.of());
@@ -57,19 +60,15 @@ public class MonitoringOrchestrator {
                 if (result.isSuccess() && result.normalizedData() != null) {
                     String hash = normalizer.computeHash(result.normalizedData());
 
-                    // Load previous successful snapshot
                     JsonNode previous = loadPreviousSnapshot(monitor.sourceCode());
 
-                    // Store new snapshot
                     storeSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
                         result.normalizedData(), hash, true, null);
 
-                    // Diff
                     List<ChangeEvent> events = diffEngine.diff(
                         monitor.sourceCode(), monitor.sourceUrl(),
                         previous, result.normalizedData());
 
-                    // Persist events
                     for (ChangeEvent event : events) {
                         saveEvent(event);
                     }
@@ -80,7 +79,6 @@ public class MonitoringOrchestrator {
                         monitor.sourceCode(), hash != null ? hash.substring(0, 8) : "null",
                         events.size());
                 } else {
-                    // Store failure snapshot (don't overwrite last valid)
                     storeSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
                         null, null, false,
                         result.errorMessage() != null ? result.errorMessage() : result.status().name());
@@ -104,23 +102,17 @@ public class MonitoringOrchestrator {
     }
 
     private List<GameSourceMonitor> getDueMonitors(Set<String> sourceCodes) {
-        // For now, return all monitors. Due-time logic can be added later
-        // using SourceDefinition.checkIntervalSeconds and last check time.
-        // The CDI container discovers all GameSourceMonitor beans.
-        try {
-            var instance = jakarta.enterprise.inject.spi.CDI.current()
-                .select(GameSourceMonitor.class);
-            List<GameSourceMonitor> all = new ArrayList<>();
-            for (GameSourceMonitor m : instance) {
-                if (sourceCodes.isEmpty() || sourceCodes.contains(m.sourceCode())) {
-                    all.add(m);
-                }
+        List<GameSourceMonitor> monitors = new ArrayList<>();
+        for (GameSourceMonitor m : allMonitors) {
+            if (sourceCodes.isEmpty() || sourceCodes.contains(m.sourceCode())) {
+                monitors.add(m);
             }
-            return all;
-        } catch (Exception e) {
-            Log.warn("No GameSourceMonitor beans found: " + e.getMessage());
-            return List.of();
         }
+        if (monitors.isEmpty()) {
+            Log.warn("No GameSourceMonitor beans discovered via Instance<> injection. " +
+                "Verify monitors are @ApplicationScoped and in a scanned package.");
+        }
+        return monitors;
     }
 
     private JsonNode loadPreviousSnapshot(String sourceCode) {
@@ -174,7 +166,6 @@ public class MonitoringOrchestrator {
 
     private void saveEvent(ChangeEvent event) {
         try (var session = driver.session()) {
-            // Use MERGE to deduplicate by key
             session.run("""
                 MERGE (ce:ChangeEvent {deduplicationKey: $key})
                 ON CREATE SET
@@ -210,9 +201,6 @@ public class MonitoringOrchestrator {
         }
     }
 
-    /**
-     * Summary of a monitoring run.
-     */
     public record MonitoringRunSummary(
         OffsetDateTime startedAt,
         OffsetDateTime finishedAt,
