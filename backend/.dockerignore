@@ -1,0 +1,16 @@
+# Docker build context — keep the image small
+**/target/
+**/.env*
+**/.env.local
+**/.git
+**/.idea/
+**/.vscode/
+**/node_modules/
+**/frontend/
+**/docs/
+**/scripts/
+**/*.md
+!src/**
+!pom.xml
+!mvnw*
+!.mvn/
