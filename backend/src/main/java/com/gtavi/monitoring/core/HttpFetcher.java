@@ -9,13 +9,14 @@ import org.jsoup.Jsoup;
 import java.io.IOException;
 
 /**
- * Fetches HTML content from URLs with retry, timeout, and User-Agent support.
+ * Fetches HTML content from URLs with retry, timeout, and browser-like headers.
  * Respects HTTP 429 (Retry-After), 5xx retry with backoff, and connection limits.
  */
 @ApplicationScoped
 public class HttpFetcher {
 
-    @ConfigProperty(name = "gtavi.monitoring.user-agent", defaultValue = "GtaVIWaitingRoom/1.0")
+    @ConfigProperty(name = "gtavi.monitoring.user-agent",
+        defaultValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
     String userAgent;
 
     @ConfigProperty(name = "gtavi.monitoring.default-timeout-ms", defaultValue = "15000")
@@ -46,6 +47,11 @@ public class HttpFetcher {
             try {
                 Connection.Response response = Jsoup.connect(url)
                     .userAgent(userAgent)
+                    .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+                    .header("Accept-Language", "en-US,en;q=0.9,fr;q=0.8")
+                    .header("Accept-Encoding", "gzip, deflate, br")
+                    .header("Cache-Control", "no-cache")
+                    .header("DNT", "1")
                     .timeout(timeoutMs)
                     .maxBodySize(MAX_RESPONSE_SIZE)
                     .followRedirects(true)
@@ -67,15 +73,18 @@ public class HttpFetcher {
                     continue;
                 }
 
-                if (statusCode >= 500 && statusCode < 600) {
+                // 503, 403, 500 — all retryable with backoff in case of temporary blocks
+                if (statusCode >= 500 || statusCode == 403 || statusCode == 503 || statusCode == 502) {
                     Log.debugf("HTTP %d from %s (attempt %d/%d)",
                         statusCode, url, attempt + 1, MAX_RETRIES);
-                    sleep(backoff(attempt));
-                    continue;
+                    if (attempt < MAX_RETRIES - 1) {
+                        sleep(backoff(attempt));
+                        continue;
+                    }
                 }
 
                 // Non-retryable status
-                throw new IOException("HTTP " + statusCode + " from " + url);
+                throw new IOException("HTTP error fetching URL. Status=" + statusCode + ", URL=[" + url + "]");
 
             } catch (IOException e) {
                 if (isRetryable(e) && attempt < MAX_RETRIES - 1) {
@@ -100,7 +109,9 @@ public class HttpFetcher {
     private boolean isRetryable(IOException e) {
         String msg = e.getMessage().toLowerCase();
         return msg.contains("timeout") || msg.contains("connect")
-            || msg.contains("reset") || msg.contains("broken pipe");
+            || msg.contains("reset") || msg.contains("broken pipe")
+            || msg.contains("status=403") || msg.contains("status=503")
+            || msg.contains("status=502");
     }
 
     private long parseRetryAfter(String header) {
