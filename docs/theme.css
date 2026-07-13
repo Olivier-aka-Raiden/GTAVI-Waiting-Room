@@ -1,0 +1,112 @@
+# GTA VI Waiting Room — Theme Configuration
+#
+# Extracted from https://www.rockstargames.com/VI/ on 2026-07-13.
+# All colors match Rockstar's official GTA VI brand palette.
+
+# ============================================================
+# Color Palette
+# ============================================================
+
+# Backgrounds
+BG_PRIMARY=#111117        # Main page background (deep near-black)
+BG_CARD=#0C0D1B           # Card/surface background
+BG_OVERLAY=rgba(0,0,0,0.5) # Modal/overlay background
+
+# Accent Colors (the GTA VI signature palette)
+ACCENT_PINK=#FFB2C6       # Primary accent — GTA VI pink (buttons, highlights)
+ACCENT_PURPLE=#4B2F54     # Secondary accent — Vice City purple
+ACCENT_GOLD=#FFF9CB       # Headings — warm gold/yellow
+ACCENT_ORANGE=#FFD4A8     # Warm accent — Vice City sunset orange
+ACCENT_TEAL=#E6FFA3       # Status indicators — neon green/teal
+
+# Text
+TEXT_PRIMARY=#FFFFFF      # Body text — white
+TEXT_MUTED=#D9D1F6        # Secondary text — muted lavender
+TEXT_DARK=#0C0D1B         # Text on light backgrounds (buttons)
+
+# Section-specific backgrounds (from Rockstar page sections)
+SECTION_PURPLE=#4B2F54    # Ultimate Edition section
+SECTION_ORANGE=#FFD4A8    # Vintage Vice City section
+SECTION_BLUE_DARK=#243152 # Trailer section
+SECTION_BLUE=#2C3868      # Leonida section
+SECTION_CORAL_DARK=#243152 # Media section
+SECTION_CORAL=#FFC5B8     # People & Places section
+
+# ============================================================
+# Typography
+# ============================================================
+
+# Rockstar uses:
+# - Headings: bold, uppercase tracking, gold (#FFF9CB) or white
+# - Body: lighter weight, white (#FFFFFF) or muted lavender (#D9D1F6)
+# - Buttons: bold, dark text (#0C0D1B) on pink (#FFB2C6) background
+
+# Font stack (Rockstar uses a custom sans-serif; fall back to system)
+FONT_FAMILY=system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif
+FONT_MONO=ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace
+
+# ============================================================
+# Assets from Rockstar CDN (for reference)
+# ============================================================
+
+# Do NOT hotlink these in production — download and serve locally.
+# These URLs may change. Use as reference for downloading assets.
+
+# Hero poster (Lucia + Jason artwork):
+# https://www.rockstargames.com/VI/_next/static/media/poster_full.0az_iud2g3y4j.jpg
+
+# GTA VI logo (transparent PNG):
+# https://www.rockstargames.com/VI/_next/static/media/logo_gta.0_~y3s2ni8fbj.png
+# https://www.rockstargames.com/VI/_next/static/media/logo_vi.02gnpy7k4ozcz.png
+
+# Ultimate Edition:
+# https://www.rockstargames.com/VI/_next/static/media/ultimate_mobile_en_us.03~7e7tlo4k4r.jpg
+
+# Vintage Vice City Pack:
+# https://www.rockstargames.com/VI/_next/static/media/VINTAGE_VICE_CITY_PACK_01.05zaof7o1uz.3.jpg
+
+# Trailer 2 thumbnail:
+# https://www.rockstargames.com/VI/_next/static/media/trailerMobile.0~-fg~j1xd8hq.jpg
+
+# ============================================================
+# CSS Custom Properties (for non-Tailwind usage)
+# ============================================================
+
+:root {
+  --bg-primary: #111117;
+  --bg-card: #0C0D1B;
+  --bg-overlay: rgba(0, 0, 0, 0.5);
+
+  --accent-pink: #FFB2C6;
+  --accent-purple: #4B2F54;
+  --accent-gold: #FFF9CB;
+  --accent-orange: #FFD4A8;
+  --accent-teal: #E6FFA3;
+
+  --text-primary: #FFFFFF;
+  --text-muted: #D9D1F6;
+  --text-dark: #0C0D1B;
+
+  --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+}
+
+# ============================================================
+# Tailwind CSS v4 Theme (for @theme block in index.css)
+# ============================================================
+
+@theme {
+  --color-bg-primary: #111117;
+  --color-bg-card: #0C0D1B;
+  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+
+  --color-accent-pink: #FFB2C6;
+  --color-accent-purple: #4B2F54;
+  --color-accent-gold: #FFF9CB;
+  --color-accent-orange: #FFD4A8;
+  --color-accent-teal: #E6FFA3;
+
+  --color-text-primary: #FFFFFF;
+  --color-text-muted: #D9D1F6;
+  --color-text-dark: #0C0D1B;
+}

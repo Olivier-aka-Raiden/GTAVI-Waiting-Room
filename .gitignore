@@ -1,16 +1,32 @@
-# Compiled class file
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+target/
 *.class
 
-# Log file
+# Environment
+.env
+.env.local
+.env.*.local
 *.log
 
-# BlueJ files
-*.ctxt
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+# OS
+.DS_Store
+Thumbs.db
 
-# Package Files #
+# Java
 *.jar
 *.war
 *.nar
@@ -18,7 +34,20 @@
 *.zip
 *.tar.gz
 *.rar
-
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Capacitor
+android/
+ios/
+.capacitor/
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+
+# Test
+coverage/
+
+# Misc
+.cache/
