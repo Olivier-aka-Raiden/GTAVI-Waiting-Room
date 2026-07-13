@@ -1,0 +1,11 @@
+services:
+  gtavi-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gtavi-api
+    ports:
+      - "8080:8080"
+    environment:
+      - JAVA_OPTS=-XX:MaxRAMPercentage=75.0
+    restart: unless-stopped
