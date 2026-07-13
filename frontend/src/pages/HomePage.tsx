@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
 import { getGameOverview } from '../api/game';
+import { registerDevice } from '../api/devices';
 import type { GameOverview } from '../types/game';
 import { useCountdown } from '../hooks/useCountdown';
 import { Countdown } from '../features/countdown/Countdown';
 import { TrailerCarousel } from '../features/trailers/TrailerCarousel';
 import { EditionSection } from '../features/editions/EditionSection';
 import { EventTimeline } from '../features/events/EventTimeline';
+import { PushPermissionCard } from '../features/notifications/PushPermissionCard';
+import { NotificationSettings } from '../features/notifications/NotificationSettings';
+import type { NotificationPreferences } from '../api/devices';
 
 function VerificationBadge({ lastCheck, healthy }: { lastCheck: string | null; healthy: boolean }) {
   if (!lastCheck) return null;
@@ -118,6 +122,20 @@ export function HomePage() {
   const [data, setData] = useState<GameOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [installationId] = useState(() =>
+    localStorage.getItem('gta-vi-installation-id') || crypto.randomUUID()
+  );
+  const [prefs, setPrefs] = useState<NotificationPreferences>(() => ({
+    collectorEditionAnnouncement: true,
+    collectorEditionPreorder: true,
+    releaseDateChanges: true,
+    newOfficialTrailers: true,
+    majorRockstarNews: true,
+    generalNews: false,
+    priceChanges: false,
+    outOfStock: false,
+    backInStock: true,
+  }));
 
   const fetchData = () => {
     setLoading(true);
@@ -126,6 +144,10 @@ export function HomePage() {
       .then(setData)
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  const handleNotificationEnabled = () => {
+    localStorage.setItem('gta-vi-installation-id', installationId);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -154,6 +176,13 @@ export function HomePage() {
 
           {/* Events */}
           <EventTimeline events={data.latestEvents} />
+
+          {/* Notifications */}
+          <PushPermissionCard onEnabled={handleNotificationEnabled} />
+          <NotificationSettings
+            preferences={prefs}
+            onChange={(update) => setPrefs(p => ({ ...p, ...update }))}
+          />
         </div>
 
         {/* Footer */}
