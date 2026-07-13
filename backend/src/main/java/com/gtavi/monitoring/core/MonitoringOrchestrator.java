@@ -1,0 +1,224 @@
+package com.gtavi.monitoring.core;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.gtavi.domain.ChangeEvent;
+import com.gtavi.monitoring.diff.DiffEngine;
+import com.gtavi.service.GameService;
+import io.quarkus.logging.Log;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.neo4j.driver.Driver;
+
+import java.time.OffsetDateTime;
+import java.util.*;
+
+/**
+ * Orchestrates the full monitoring pipeline:
+ * 1. Select due sources
+ * 2. Fetch → Extract → Normalize → Hash → Load previous → Diff → Store
+ */
+@ApplicationScoped
+public class MonitoringOrchestrator {
+
+    @Inject
+    Driver driver;
+
+    @Inject
+    Normalizer normalizer;
+
+    @Inject
+    DiffEngine diffEngine;
+
+    @Inject
+    GameService gameService;
+
+    /**
+     * Run a monitoring check for all due sources.
+     * Returns summary statistics.
+     */
+    public MonitoringRunSummary runCheck() {
+        return runCheck(Set.of());
+    }
+
+    /**
+     * Run a monitoring check for specific sources (or all if empty).
+     */
+    public MonitoringRunSummary runCheck(Set<String> sourceCodes) {
+        OffsetDateTime startedAt = OffsetDateTime.now();
+        int checked = 0, successful = 0, failed = 0, eventsCreated = 0;
+
+        List<GameSourceMonitor> monitors = getDueMonitors(sourceCodes);
+
+        for (GameSourceMonitor monitor : monitors) {
+            checked++;
+            try {
+                MonitorResult result = monitor.fetchCurrentState();
+
+                if (result.isSuccess() && result.normalizedData() != null) {
+                    String hash = normalizer.computeHash(result.normalizedData());
+
+                    // Load previous successful snapshot
+                    JsonNode previous = loadPreviousSnapshot(monitor.sourceCode());
+
+                    // Store new snapshot
+                    storeSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
+                        result.normalizedData(), hash, true, null);
+
+                    // Diff
+                    List<ChangeEvent> events = diffEngine.diff(
+                        monitor.sourceCode(), monitor.sourceUrl(),
+                        previous, result.normalizedData());
+
+                    // Persist events
+                    for (ChangeEvent event : events) {
+                        saveEvent(event);
+                    }
+                    eventsCreated += events.size();
+
+                    successful++;
+                    Log.infof("Monitor %s: SUCCESS (hash=%s, %d events)",
+                        monitor.sourceCode(), hash != null ? hash.substring(0, 8) : "null",
+                        events.size());
+                } else {
+                    // Store failure snapshot (don't overwrite last valid)
+                    storeSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
+                        null, null, false,
+                        result.errorMessage() != null ? result.errorMessage() : result.status().name());
+                    failed++;
+                    Log.warnf("Monitor %s: %s — %s", monitor.sourceCode(),
+                        result.status(), result.errorMessage());
+                }
+
+            } catch (Exception e) {
+                storeSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
+                    null, null, false, e.getMessage());
+                failed++;
+                Log.errorf(e, "Monitor %s: unexpected error", monitor.sourceCode());
+            }
+        }
+
+        OffsetDateTime finishedAt = OffsetDateTime.now();
+
+        return new MonitoringRunSummary(startedAt, finishedAt,
+            checked, successful, failed, eventsCreated);
+    }
+
+    private List<GameSourceMonitor> getDueMonitors(Set<String> sourceCodes) {
+        // For now, return all monitors. Due-time logic can be added later
+        // using SourceDefinition.checkIntervalSeconds and last check time.
+        // The CDI container discovers all GameSourceMonitor beans.
+        try {
+            var instance = jakarta.enterprise.inject.spi.CDI.current()
+                .select(GameSourceMonitor.class);
+            List<GameSourceMonitor> all = new ArrayList<>();
+            for (GameSourceMonitor m : instance) {
+                if (sourceCodes.isEmpty() || sourceCodes.contains(m.sourceCode())) {
+                    all.add(m);
+                }
+            }
+            return all;
+        } catch (Exception e) {
+            Log.warn("No GameSourceMonitor beans found: " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private JsonNode loadPreviousSnapshot(String sourceCode) {
+        try (var session = driver.session()) {
+            var result = session.run(
+                "MATCH (s:SourceSnapshot {sourceCode: $code, successful: true}) " +
+                "RETURN s.normalizedJson AS json ORDER BY s.checkedAt DESC LIMIT 1",
+                Map.of("code", sourceCode)
+            );
+            if (result.hasNext()) {
+                var record = result.single();
+                if (!record.get("json").isNull()) {
+                    String jsonStr = record.get("json").asString();
+                    return new com.fasterxml.jackson.databind.ObjectMapper().readTree(jsonStr);
+                }
+            }
+        } catch (Exception e) {
+            Log.debugf("No previous snapshot for %s: %s", sourceCode, e.getMessage());
+        }
+        return null;
+    }
+
+    private void storeSnapshot(String sourceCode, String sourceUrl,
+                                JsonNode data, String hash,
+                                boolean successful, String errorMessage) {
+        String json = data != null ? data.toString() : null;
+
+        try (var session = driver.session()) {
+            session.run("""
+                CREATE (s:SourceSnapshot {
+                    sourceCode: $sourceCode,
+                    sourceUrl: $sourceUrl,
+                    status: $status,
+                    normalizedJson: $json,
+                    normalizedHash: $hash,
+                    checkedAt: datetime(),
+                    successful: $successful,
+                    errorMessage: $errorMessage
+                })
+                """, Map.ofEntries(
+                    Map.entry("sourceCode", sourceCode),
+                    Map.entry("sourceUrl", sourceUrl),
+                    Map.entry("status", successful ? "SUCCESS" : "FAILURE"),
+                    Map.entry("json", json != null ? json : ""),
+                    Map.entry("hash", hash != null ? hash : ""),
+                    Map.entry("successful", successful),
+                    Map.entry("errorMessage", errorMessage != null ? errorMessage : "")
+                ));
+        }
+    }
+
+    private void saveEvent(ChangeEvent event) {
+        try (var session = driver.session()) {
+            // Use MERGE to deduplicate by key
+            session.run("""
+                MERGE (ce:ChangeEvent {deduplicationKey: $key})
+                ON CREATE SET
+                    ce.id = $id,
+                    ce.gameCode = $gameCode,
+                    ce.sourceCode = $sourceCode,
+                    ce.eventType = $eventType,
+                    ce.priority = $priority,
+                    ce.title = $title,
+                    ce.description = $description,
+                    ce.oldValue = $oldValue,
+                    ce.newValue = $newValue,
+                    ce.evidenceUrl = $evidenceUrl,
+                    ce.detectedAt = datetime(),
+                    ce.userVisible = $userVisible,
+                    ce.notificationEligible = $notificationEligible,
+                    ce.createdAt = datetime()
+                """, Map.ofEntries(
+                    Map.entry("key", event.getDeduplicationKey()),
+                    Map.entry("id", event.getId()),
+                    Map.entry("gameCode", "GTA_VI"),
+                    Map.entry("sourceCode", event.getSourceCode() != null ? event.getSourceCode() : ""),
+                    Map.entry("eventType", event.getEventType()),
+                    Map.entry("priority", event.getPriority()),
+                    Map.entry("title", event.getTitle()),
+                    Map.entry("description", event.getDescription() != null ? event.getDescription() : ""),
+                    Map.entry("oldValue", event.getOldValue() != null ? event.getOldValue() : ""),
+                    Map.entry("newValue", event.getNewValue() != null ? event.getNewValue() : ""),
+                    Map.entry("evidenceUrl", event.getEvidenceUrl() != null ? event.getEvidenceUrl() : ""),
+                    Map.entry("userVisible", event.isUserVisible()),
+                    Map.entry("notificationEligible", event.isNotificationEligible())
+                ));
+        }
+    }
+
+    /**
+     * Summary of a monitoring run.
+     */
+    public record MonitoringRunSummary(
+        OffsetDateTime startedAt,
+        OffsetDateTime finishedAt,
+        int checkedSources,
+        int successfulSources,
+        int failedSources,
+        int eventsCreated
+    ) {}
+}
