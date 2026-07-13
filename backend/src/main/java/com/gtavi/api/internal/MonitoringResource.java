@@ -27,7 +27,7 @@ public class MonitoringResource {
     @POST
     @Path("/check-updates")
     public Response checkUpdates(
-        @HeaderParam("X-Shared-Secret") String secret,
+        @HeaderParam("X-Internal-Secret") String secret,
         @QueryParam("source") String source
     ) {
         if (!isAuthorized(secret)) {
@@ -65,7 +65,7 @@ public class MonitoringResource {
 
     @GET
     @Path("/monitoring/status")
-    public Response getStatus(@HeaderParam("X-Shared-Secret") String secret) {
+    public Response getStatus(@HeaderParam("X-Internal-Secret") String secret) {
         if (!isAuthorized(secret)) {
             return Response.status(Response.Status.UNAUTHORIZED)
                 .entity(Map.of("error", "unauthorized"))

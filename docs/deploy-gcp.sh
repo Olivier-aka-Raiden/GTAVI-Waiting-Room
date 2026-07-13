@@ -104,7 +104,7 @@ gcloud scheduler jobs create http $JOB_NAME \
   --schedule="*/10 * * * *" \
   --uri="$BFF_URL/internal/jobs/check-updates" \
   --http-method=POST \
-  --headers="X-Shared-Secret=$SHARED_SECRET,Content-Type=application/json" \
+  --headers="X-Internal-Secret=$SHARED_SECRET,Content-Type=application/json" \
   --attempt-deadline=180s \
   --time-zone="Europe/Zurich" \
   --description="Triggers GTA VI source monitoring (Rockstar, retailers, Amazon)"
@@ -132,5 +132,5 @@ gcloud scheduler jobs describe $JOB_NAME \
 
 # Force a monitoring run to test the pipeline end-to-end:
 curl -s -X POST "$BFF_URL/internal/jobs/check-updates" \
-  -H "X-Shared-Secret: $SHARED_SECRET" \
+  -H "X-Internal-Secret: $SHARED_SECRET" \
   -H "Content-Type: application/json" | jq .
