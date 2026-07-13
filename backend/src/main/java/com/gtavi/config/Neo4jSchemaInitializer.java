@@ -144,6 +144,30 @@ public class Neo4jSchemaInitializer {
                 r.updatedAt = datetime()
             """);
 
+        // Rockstar Games Store (official store with pre-orders live)
+        session.run("""
+            MERGE (r:Retailer {code: 'ROCKSTAR_STORE'})
+            SET r.name = 'Rockstar Games Store',
+                r.countryCode = 'US',
+                r.officialStore = true,
+                r.baseUrl = 'https://www.rockstargames.com',
+                r.enabled = true,
+                r.createdAt = coalesce(r.createdAt, datetime()),
+                r.updatedAt = datetime()
+            """);
+
+        // Amazon France
+        session.run("""
+            MERGE (r:Retailer {code: 'AMAZON_FR'})
+            SET r.name = 'Amazon.fr',
+                r.countryCode = 'FR',
+                r.officialStore = false,
+                r.baseUrl = 'https://www.amazon.fr',
+                r.enabled = true,
+                r.createdAt = coalesce(r.createdAt, datetime()),
+                r.updatedAt = datetime()
+            """);
+
         Log.debug("Retailers seeded.");
     }
 
