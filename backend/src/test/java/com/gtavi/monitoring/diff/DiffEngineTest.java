@@ -33,7 +33,7 @@ class DiffEngineTest {
     void testReleaseDateChanged() throws Exception {
         var prev = mapper.readTree("{\"releaseDate\":\"2026-11-19\"}");
         var curr = mapper.readTree("{\"releaseDate\":\"2027-03-12\"}");
-        List<ChangeEvent> events = engine.diff("TEST", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_MAIN", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("RELEASE_DATE_CHANGED", events.get(0).getEventType());
         assertEquals("CRITICAL", events.get(0).getPriority());
@@ -43,7 +43,7 @@ class DiffEngineTest {
     void testNewEditionDetected() throws Exception {
         var prev = mapper.readTree("{\"editions\":[{\"name\":\"Standard Edition\"}]}");
         var curr = mapper.readTree("{\"editions\":[{\"name\":\"Standard Edition\"},{\"name\":\"Ultimate Edition\"}]}");
-        List<ChangeEvent> events = engine.diff("TEST", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_EDITIONS", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("NEW_OFFICIAL_EDITION", events.get(0).getEventType());
         assertEquals("Ultimate Edition", events.get(0).getNewValue());
@@ -57,7 +57,7 @@ class DiffEngineTest {
             "{\"name\":\"Standard Edition\"}," +
             "{\"name\":\"Ultimate Edition\"}," +
             "{\"name\":\"Collector's Edition\"}]}");
-        List<ChangeEvent> events = engine.diff("TEST", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_EDITIONS", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("COLLECTOR_EDITION_ANNOUNCED", events.get(0).getEventType());
         assertEquals("CRITICAL", events.get(0).getPriority());
@@ -69,7 +69,7 @@ class DiffEngineTest {
         var prev = mapper.readTree("{\"editions\":[" +
             "{\"name\":\"Standard Edition\"},{\"name\":\"Deluxe Edition\"}]}");
         var curr = mapper.readTree("{\"editions\":[{\"name\":\"Standard Edition\"}]}");
-        List<ChangeEvent> events = engine.diff("TEST", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_EDITIONS", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("EDITION_REMOVED", events.get(0).getEventType());
         assertEquals("Deluxe Edition", events.get(0).getOldValue());
@@ -82,7 +82,7 @@ class DiffEngineTest {
         var curr = mapper.readTree("{\"videos\":[" +
             "{\"title\":\"Trailer 1\",\"mediaType\":\"TRAILER\"}," +
             "{\"title\":\"Trailer 2\",\"mediaType\":\"TRAILER\"}]}");
-        List<ChangeEvent> events = engine.diff("TEST", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_MEDIA", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("NEW_TRAILER", events.get(0).getEventType());
         assertEquals("MAJOR", events.get(0).getPriority());
@@ -92,7 +92,7 @@ class DiffEngineTest {
     void testPreorderOpened() throws Exception {
         var prev = mapper.readTree("{\"preorderAvailable\":false}");
         var curr = mapper.readTree("{\"preorderAvailable\":true}");
-        List<ChangeEvent> events = engine.diff("TEST", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_MAIN", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("PREORDER_OPENED", events.get(0).getEventType());
     }
@@ -111,7 +111,7 @@ class DiffEngineTest {
         var curr = mapper.readTree("{\"releaseDate\":\"2027-03-12\"," +
             "\"editions\":[" +
             "{\"name\":\"Standard Edition\"},{\"name\":\"Collector's Edition\"}]}");
-        List<ChangeEvent> events = engine.diff("TEST", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_MAIN", "http://test", prev, curr);
         assertEquals(2, events.size());
         assertTrue(events.stream().anyMatch(e -> "RELEASE_DATE_CHANGED".equals(e.getEventType())));
         assertTrue(events.stream().anyMatch(e -> "COLLECTOR_EDITION_ANNOUNCED".equals(e.getEventType())));
@@ -122,7 +122,7 @@ class DiffEngineTest {
         var prev = mapper.readTree("{\"editions\":[]}");
         var curr = mapper.readTree("{\"editions\":[" +
             "{\"name\":\"Limited Collector's Premium Edition\"}]}");
-        List<ChangeEvent> events = engine.diff("TEST", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_EDITIONS", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("COLLECTOR_EDITION_ANNOUNCED", events.get(0).getEventType());
     }

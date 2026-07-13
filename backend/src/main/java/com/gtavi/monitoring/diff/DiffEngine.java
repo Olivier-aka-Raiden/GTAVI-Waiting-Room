@@ -39,11 +39,15 @@ public class DiffEngine {
                 null, null, "INITIAL:" + sourceCode + ":" + System.currentTimeMillis()));
         }
 
-        // Detect edition changes
-        events.addAll(diffEditions(sourceCode, sourceUrl, previous, current));
+        // Detect edition changes — only for Rockstar official sources
+        if (sourceCode.equals("ROCKSTAR_EDITIONS") || sourceCode.equals("ROCKSTAR_MAIN")) {
+            events.addAll(diffEditions(sourceCode, sourceUrl, previous, current));
+        }
 
-        // Detect release date changes
-        events.addAll(diffReleaseDate(sourceCode, sourceUrl, previous, current));
+        // Detect release date changes — only for Rockstar main page
+        if (sourceCode.equals("ROCKSTAR_MAIN")) {
+            events.addAll(diffReleaseDate(sourceCode, sourceUrl, previous, current));
+        }
 
         // Detect trailer changes — only for video sources
         if (sourceCode.equals("ROCKSTAR_MEDIA") || sourceCode.equals("ROCKSTAR_YOUTUBE")
@@ -51,12 +55,19 @@ public class DiffEngine {
             events.addAll(diffTrailers(sourceCode, sourceUrl, previous, current));
         }
 
-        // Detect pre-order changes
-        events.addAll(diffPreorder(sourceCode, sourceUrl, previous, current));
+        // Detect pre-order changes — only for Rockstar sources and retailers
+        if (sourceCode.equals("ROCKSTAR_MAIN") || sourceCode.equals("ROCKSTAR_EDITIONS")
+            || sourceCode.equals("ROCKSTAR_STORE")
+            || sourceCode.startsWith("PS_STORE") || sourceCode.startsWith("XBOX_STORE")
+            || sourceCode.equals("GALAXUS") || sourceCode.equals("WOG")
+            || sourceCode.equals("AMAZON_FR")) {
+            events.addAll(diffPreorder(sourceCode, sourceUrl, previous, current));
+        }
 
         // Detect retailer product changes (for retailer-specific sources)
         if (sourceCode.startsWith("PS_STORE") || sourceCode.startsWith("XBOX_STORE")
-            || sourceCode.equals("GALAXUS") || sourceCode.equals("WOG")) {
+            || sourceCode.equals("GALAXUS") || sourceCode.equals("WOG")
+            || sourceCode.equals("ROCKSTAR_STORE") || sourceCode.equals("AMAZON_FR")) {
             events.addAll(diffRetailerProducts(sourceCode, sourceUrl, previous, current));
         }
 
