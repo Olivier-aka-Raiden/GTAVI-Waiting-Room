@@ -1,7 +1,9 @@
 package com.gtavi.api.dto;
 
+import java.util.List;
+
 /**
- * Edition information for the API response.
+ * Edition with retailer offers.
  */
 public record EditionResponse(
     String id,
@@ -10,5 +12,6 @@ public record EditionResponse(
     boolean official,
     String status,
     String description,
-    String imageUrl
+    String imageUrl,
+    List<RetailOfferResponse> offers
 ) {}

@@ -24,6 +24,7 @@ public class Neo4jSchemaInitializer {
             createIndexes(session);
             seedGame(session);
             seedEditions(session);
+            seedRetailers(session);
             seedTrailers(session);
             seedSourceDefinitions(session);
             seedInitialEvents(session);
@@ -88,6 +89,62 @@ public class Neo4jSchemaInitializer {
                 e.updatedAt = datetime()
             """);
         Log.debug("Editions seeded.");
+    }
+
+    private void seedRetailers(Session session) {
+        // Retailer constraint
+        session.run("CREATE CONSTRAINT retailer_code_unique IF NOT EXISTS FOR (r:Retailer) REQUIRE r.code IS UNIQUE");
+        session.run("CREATE CONSTRAINT offer_id_unique IF NOT EXISTS FOR (o:RetailOffer) REQUIRE o.id IS UNIQUE");
+
+        // PlayStation Store
+        session.run("""
+            MERGE (r:Retailer {code: 'PS_STORE'})
+            SET r.name = 'PlayStation Store',
+                r.countryCode = 'CH',
+                r.officialStore = true,
+                r.baseUrl = 'https://store.playstation.com/en-ch',
+                r.enabled = true,
+                r.createdAt = coalesce(r.createdAt, datetime()),
+                r.updatedAt = datetime()
+            """);
+
+        // Xbox Store
+        session.run("""
+            MERGE (r:Retailer {code: 'XBOX_STORE'})
+            SET r.name = 'Xbox Store',
+                r.countryCode = 'CH',
+                r.officialStore = true,
+                r.baseUrl = 'https://www.xbox.com/en-ch',
+                r.enabled = true,
+                r.createdAt = coalesce(r.createdAt, datetime()),
+                r.updatedAt = datetime()
+            """);
+
+        // Galaxus / Digitec
+        session.run("""
+            MERGE (r:Retailer {code: 'GALAXUS'})
+            SET r.name = 'Galaxus',
+                r.countryCode = 'CH',
+                r.officialStore = false,
+                r.baseUrl = 'https://www.galaxus.ch',
+                r.enabled = true,
+                r.createdAt = coalesce(r.createdAt, datetime()),
+                r.updatedAt = datetime()
+            """);
+
+        // WOG
+        session.run("""
+            MERGE (r:Retailer {code: 'WOG'})
+            SET r.name = 'WOG.ch',
+                r.countryCode = 'CH',
+                r.officialStore = false,
+                r.baseUrl = 'https://www.wog.ch',
+                r.enabled = true,
+                r.createdAt = coalesce(r.createdAt, datetime()),
+                r.updatedAt = datetime()
+            """);
+
+        Log.debug("Retailers seeded.");
     }
 
     private void seedTrailers(Session session) {

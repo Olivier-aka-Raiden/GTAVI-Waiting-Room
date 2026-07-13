@@ -1,4 +1,4 @@
-import type { Edition } from '../../types/game';
+import type { Edition, RetailOffer } from '../../types/game';
 
 interface EditionCardProps {
   edition: Edition;
@@ -48,6 +48,47 @@ export function EditionCard({ edition }: EditionCardProps) {
 
       {edition.description && (
         <p className="text-sm text-text-muted leading-relaxed">{edition.description}</p>
+      )}
+
+      {/* Retailer offers */}
+      {edition.offers.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-white/10">
+          <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+            Where to order
+          </span>
+          <div className="mt-2 space-y-1.5">
+            {edition.offers.map(offer => (
+              <a
+                key={offer.id}
+                href={offer.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between group/item py-1.5 px-2 -mx-2 rounded hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm text-text-primary group-hover/item:text-accent-pink transition-colors truncate">
+                    {offer.retailerName}
+                  </span>
+                  {offer.platform && (
+                    <span className="text-xs text-text-muted">{offer.platform}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {offer.price != null && (
+                    <span className="text-sm font-medium text-accent-teal">
+                      {offer.currency === 'CHF' ? 'CHF' : offer.currency} {offer.price.toFixed(2)}
+                    </span>
+                  )}
+                  {offer.preorderAvailable && (
+                    <span className="text-xs bg-accent-teal/20 text-accent-teal px-1.5 py-0.5 rounded">
+                      PRE-ORDER
+                    </span>
+                  )}
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

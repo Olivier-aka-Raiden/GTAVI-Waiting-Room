@@ -43,6 +43,20 @@ export interface Edition {
   status: EditionStatus;
   description: string;
   imageUrl: string | null;
+  offers: RetailOffer[];
+}
+
+export interface RetailOffer {
+  id: string;
+  retailerCode: string;
+  retailerName: string;
+  platform: string;
+  price: number | null;
+  currency: string | null;
+  availabilityStatus: string;
+  preorderAvailable: boolean;
+  url: string;
+  lastSuccessfulCheckAt: string | null;
 }
 
 export type EditionType =

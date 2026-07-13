@@ -3,6 +3,8 @@ package com.gtavi.service;
 import com.gtavi.domain.ChangeEvent;
 import com.gtavi.domain.Edition;
 import com.gtavi.domain.Game;
+import com.gtavi.domain.Retailer;
+import com.gtavi.domain.RetailOffer;
 import com.gtavi.domain.Trailer;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -120,6 +122,27 @@ public class GameService {
         }
     }
 
+    /**
+     * Returns all retailers.
+     */
+    public List<com.gtavi.domain.Retailer> getRetailers() {
+        try (var session = driver.session()) {
+            return session.run("MATCH (r:Retailer {enabled: true}) RETURN r").list(this::mapToRetailer);
+        }
+    }
+
+    /**
+     * Returns offers for a specific edition.
+     */
+    public List<com.gtavi.domain.RetailOffer> getOffers(String editionId) {
+        try (var session = driver.session()) {
+            return session.run(
+                "MATCH (o:RetailOffer {editionId: $editionId}) RETURN o",
+                java.util.Map.of("editionId", editionId)
+            ).list(this::mapToOffer);
+        }
+    }
+
     // ---- Mapping helpers ----
 
     private Game mapToGame(Record record) {
@@ -217,5 +240,39 @@ public class GameService {
             return node.get(key).asBoolean();
         }
         return defaultValue;
+    }
+
+    private Retailer mapToRetailer(Record record) {
+        var node = record.get("r").asNode();
+        var r = new Retailer();
+        r.setId(node.get("id").asString());
+        r.setCode(node.get("code").asString());
+        r.setName(getStringOrNull(node, "name"));
+        r.setCountryCode(getStringOrNull(node, "countryCode"));
+        r.setOfficialStore(getBooleanOrDefault(node, "officialStore", false));
+        r.setBaseUrl(getStringOrNull(node, "baseUrl"));
+        r.setEnabled(getBooleanOrDefault(node, "enabled", true));
+        return r;
+    }
+
+    private RetailOffer mapToOffer(Record record) {
+        var node = record.get("o").asNode();
+        var o = new RetailOffer();
+        o.setId(node.get("id").asString());
+        o.setEditionId(getStringOrNull(node, "editionId"));
+        o.setRetailerCode(getStringOrNull(node, "retailerCode"));
+        o.setPlatform(getStringOrNull(node, "platform"));
+        o.setCountryCode(getStringOrNull(node, "countryCode"));
+        if (node.containsKey("price") && !node.get("price").isNull()) {
+            o.setPrice(new java.math.BigDecimal(node.get("price").asNumber().toString()));
+        }
+        o.setCurrency(getStringOrNull(node, "currency"));
+        o.setUrl(getStringOrNull(node, "url"));
+        o.setAvailabilityStatus(getStringOrNull(node, "availabilityStatus"));
+        o.setPreorderAvailable(getBooleanOrDefault(node, "preorderAvailable", false));
+        o.setStockStatus(getStringOrNull(node, "stockStatus"));
+        o.setLastSuccessfulCheckAt(getOffsetDateTimeOrNull(node, "lastSuccessfulCheckAt"));
+        o.setLastChangedAt(getOffsetDateTimeOrNull(node, "lastChangedAt"));
+        return o;
     }
 }

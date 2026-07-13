@@ -51,6 +51,12 @@ public class DiffEngine {
         // Detect pre-order changes
         events.addAll(diffPreorder(sourceCode, sourceUrl, previous, current));
 
+        // Detect retailer product changes (for retailer-specific sources)
+        if (sourceCode.startsWith("PS_STORE") || sourceCode.startsWith("XBOX_STORE")
+            || sourceCode.equals("GALAXUS") || sourceCode.equals("WOG")) {
+            events.addAll(diffRetailerProducts(sourceCode, sourceUrl, previous, current));
+        }
+
         return events;
     }
 
@@ -172,6 +178,45 @@ public class DiffEngine {
         }
     }
 
+    private List<ChangeEvent> diffRetailerProducts(String sourceCode, String sourceUrl,
+                                                     JsonNode prev, JsonNode curr) {
+        List<ChangeEvent> events = new ArrayList<>();
+
+        JsonNode prevProducts = prev != null ? prev.get("products") : null;
+        JsonNode currProducts = curr.get("products");
+        if (currProducts == null) return events;
+
+        Set<String> prevNames = productNames(prevProducts);
+        Set<String> currNames = productNames(currProducts);
+
+        // New products detected at retailer
+        Set<String> added = new HashSet<>(currNames);
+        if (prevNames != null) added.removeAll(prevNames);
+
+        for (String name : added) {
+            boolean isCollector = name.toLowerCase().replaceAll("[^a-z]", "").contains("collector");
+            if (isCollector) {
+                // Get the product URL for the collector edition
+                String productUrl = getProductUrl(name, currProducts);
+                events.add(createEvent(sourceCode, sourceUrl,
+                    "COLLECTOR_LISTING_DETECTED_AT_RETAILER", "CRITICAL",
+                    "Collector's Edition listed at " + sourceCode + "!",
+                    "A retailer is listing a Collector's Edition: " + name + ". Check the app for details.",
+                    null, name,
+                    "COLLECTOR_RETAILER:" + sourceCode + ":" + sanitizeKey(name)));
+            } else {
+                events.add(createEvent(sourceCode, sourceUrl,
+                    "RETAILER_LISTING_CREATED", "RETAIL",
+                    "New listing at " + sourceCode + ": " + name,
+                    "A new GTA VI product listing was detected.",
+                    null, name,
+                    "RETAILER_LISTING:" + sourceCode + ":" + sanitizeKey(name)));
+            }
+        }
+
+        return events;
+    }
+
     // ---- Helpers ----
 
     private Set<String> editionNames(JsonNode editions) {
@@ -185,6 +230,24 @@ public class DiffEngine {
     private boolean isCollectorEdition(String name, JsonNode editions) {
         String lower = name.toLowerCase().replaceAll("[^a-z]", "");
         return lower.contains("collector") || lower.contains("collectors");
+    }
+
+    private Set<String> productNames(JsonNode products) {
+        if (products == null) return Set.of();
+        Set<String> names = new LinkedHashSet<>();
+        for (JsonNode p : products) {
+            if (p.has("name")) names.add(p.get("name").asText());
+        }
+        return names;
+    }
+
+    private String getProductUrl(String name, JsonNode products) {
+        for (JsonNode p : products) {
+            if (p.has("name") && p.get("name").asText().equals(name) && p.has("url")) {
+                return p.get("url").asText();
+            }
+        }
+        return null;
     }
 
     private Set<String> videoTitles(JsonNode videos) {

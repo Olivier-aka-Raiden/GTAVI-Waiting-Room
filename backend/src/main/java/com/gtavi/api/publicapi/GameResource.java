@@ -116,10 +116,30 @@ public class GameResource {
     }
 
     private EditionResponse toEditionResponse(Edition e) {
+        var offers = gameService.getOffers(e.getId()).stream()
+            .map(o -> new RetailOfferResponse(
+                o.getId(), o.getRetailerCode(),
+                getRetailerName(o.getRetailerCode()),
+                o.getPlatform(), o.getPrice(), o.getCurrency(),
+                o.getAvailabilityStatus(), o.isPreorderAvailable(),
+                o.getUrl(), o.getLastSuccessfulCheckAt()
+            ))
+            .toList();
+
         return new EditionResponse(
             e.getId(), e.getName(), e.getNormalizedType(), e.isOfficial(),
-            e.getStatus(), e.getDescription(), e.getImageUrl()
+            e.getStatus(), e.getDescription(), e.getImageUrl(), offers
         );
+    }
+
+    private String getRetailerName(String code) {
+        return switch (code) {
+            case "PS_STORE" -> "PlayStation Store";
+            case "XBOX_STORE" -> "Xbox Store";
+            case "GALAXUS" -> "Galaxus";
+            case "WOG" -> "WOG.ch";
+            default -> code;
+        };
     }
 
     private ChangeEventResponse toEventResponse(com.gtavi.domain.ChangeEvent ce) {
