@@ -146,7 +146,7 @@ export function HomePage() {
       .finally(() => setLoading(false));
   };
 
-  const handleNotificationEnabled = () => {
+  const handleNotificationEnabled = (_token: string) => {
     localStorage.setItem('gta-vi-installation-id', installationId);
   };
 
@@ -178,7 +178,10 @@ export function HomePage() {
           <EventTimeline events={data.latestEvents} />
 
           {/* Notifications */}
-          <PushPermissionCard onEnabled={handleNotificationEnabled} />
+          <PushPermissionCard
+            installationId={installationId}
+            onEnabled={handleNotificationEnabled}
+          />
           <NotificationSettings
             preferences={prefs}
             onChange={(update) => setPrefs(p => ({ ...p, ...update }))}

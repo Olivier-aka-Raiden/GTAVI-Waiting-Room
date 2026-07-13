@@ -1,25 +1,21 @@
 import { useState } from 'react';
+import { enablePushNotifications } from '../../firebase/messaging';
 
 interface Props {
-  onEnabled: () => void;
+  installationId: string;
+  onEnabled: (token: string) => void;
 }
 
-export function PushPermissionCard({ onEnabled }: Props) {
+export function PushPermissionCard({ installationId, onEnabled }: Props) {
   const [state, setState] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle');
 
   const requestPermission = async () => {
     setState('requesting');
     try {
-      // Check if the browser supports notifications
-      if (!('Notification' in window)) {
-        setState('denied');
-        return;
-      }
-
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
+      const token = await enablePushNotifications(installationId);
+      if (token) {
         setState('granted');
-        onEnabled();
+        onEnabled(token);
       } else {
         setState('denied');
       }
