@@ -27,6 +27,7 @@ def check(condition, message):
 
 def test(endpoint, description, validator=None):
     """Run a test against an API endpoint."""
+    global errors
     url = f"{BASE_URL}{endpoint}"
     print(f"\n{'='*60}")
     print(f"TEST: {description}")
