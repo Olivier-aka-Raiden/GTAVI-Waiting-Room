@@ -9,7 +9,7 @@ import jakarta.inject.Inject;
 public class WogMonitor implements GameSourceMonitor {
 
     private static final String CODE = "WOG";
-    private static final String URL = "https://www.wog.ch/de/suche?q=grand+theft+auto+vi";
+    private static final String URL = "https://www.wog.ch/fr/index.cfm/search/searchTerm/GTA%206/orderBy/relevance";
 
     @Inject HttpFetcher fetcher;
     @Inject AiExtractionService aiExtraction;
