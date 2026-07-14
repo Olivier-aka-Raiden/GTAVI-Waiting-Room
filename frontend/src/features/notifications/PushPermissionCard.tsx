@@ -11,15 +11,23 @@ type PermissionState = 'idle' | 'requesting' | 'granted' | 'denied' | 'token_fai
 
 export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Props) {
   const [state, setState] = useState<PermissionState>(() => {
+    // User explicitly disabled → respect that, even if browser permission is granted
+    if (localStorage.getItem('gta-vi-notifications-disabled') === 'true') return 'idle';
     if (localStorage.getItem('gta-vi-notifications-enabled') === 'true') return 'granted';
     const perm = 'Notification' in window ? Notification.permission : 'default';
     if (perm === 'denied') return 'denied';
     return 'idle';
   });
 
+  // Detect browser permission changes (e.g. user re-grants permission manually)
   useEffect(() => {
-    if (state !== 'granted' && 'Notification' in window && Notification.permission === 'granted') {
-      setState('granted');
+    if ('Notification' in window && Notification.permission === 'granted') {
+      // Only auto-detect grant if the user hasn't explicitly disabled
+      const userDisabled = localStorage.getItem('gta-vi-notifications-disabled') === 'true';
+      if (!userDisabled && state !== 'granted') {
+        setState('granted');
+        localStorage.setItem('gta-vi-notifications-enabled', 'true');
+      }
     }
   }, [state]);
 
@@ -29,6 +37,7 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
       const token = await enablePushNotifications(installationId);
       if (token) {
         setState('granted');
+        localStorage.removeItem('gta-vi-notifications-disabled');
         localStorage.setItem('gta-vi-notifications-enabled', 'true');
         onEnabled(token);
       } else {
@@ -41,6 +50,7 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
 
   const disable = () => {
     localStorage.removeItem('gta-vi-notifications-enabled');
+    localStorage.setItem('gta-vi-notifications-disabled', 'true');
     setState('idle');
     onDisabled();
   };
