@@ -64,32 +64,26 @@ A mobile-first React + Capacitor app with a Quarkus/Neo4j backend that tracks of
     └─────────┘ └──────────┘ └──────────┘
 ```
 
-### AI-Powered Monitoring Flow
+## AI Extraction: LangChain4j with Structured Output
 
-```
-Cloud Scheduler (every 5 min)
-        │
-        ▼
-POST /internal/jobs/check-updates (OIDC-protected)
-        │
-        ▼
-For each due source:
-  1. Fetch HTML (Jsoup, with ETag/If-Modified-Since caching)
-  2. Pass to LLM: "Extract structured data about GTA VI from this page"
-  3. LLM returns validated JSON (release date, editions, trailers, etc.)
-  4. Normalize + SHA-256 hash
-  5. Load previous snapshot from Neo4j
-  6. Compare → semantic diff → ChangeEvent
-  7. If critical event → Firebase push to subscribed devices
-  8. Store new snapshot in Neo4j + Upstash-KV cache
-```
+Instead of fragile CSS selectors, the app uses **LangChain4j + DeepSeek** with **strongly-typed DTOs** — the same pattern as Radar's `CompanySentimentAiService`. Each source type has its own `@RegisterAiService` interface that returns a Java record, so LangChain4j handles JSON deserialization automatically. The LLM's output is constrained by the Java type system — it cannot return malformed fields.
 
-**Why AI scraping is better:**
-- Adapts automatically when sites redesign
-- No fragile CSS selectors to maintain
-- Can extract semantic meaning from any HTML structure
-- Works with new sources without code changes
-- Costs ~$0.05-0.20/day in LLM tokens (DeepSeek)
+| Extractor | Returns | Used by |
+|-----------|---------|---------|
+| `RockstarMainExtractor` | `RockstarMainData` | Release date, platforms, pre-order state |
+| `RockstarEditionsExtractor` | `RockstarEditionsData` | Edition list, Collector detection |
+| `RockstarMediaExtractor` | `RockstarMediaData` | Trailers, video classification |
+| `RetailerProductsExtractor` | `RetailerProductsData` | Product listings, price, availability |
+
+### Why this is better than CSS selectors
+
+| Concern | CSS Selector Approach | AI Extraction Approach |
+|---------|----------------------|----------------------|
+| Site redesign | Parser breaks, needs emergency fix | AI adapts automatically |
+| New source | Write new parser (hours) | Add URL + a typed AiService (minutes) |
+| Unstructured data | Can't handle | AI extracts meaning from any HTML |
+| Output validation | Manual JSON.parse + field checks | Java record — compiler-enforced |
+| Retailer pages | Each needs custom selectors | Same pattern for all retailers |
 
 ---
 
@@ -191,11 +185,30 @@ docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
 
 | Milestone | What | Status |
 |-----------|------|--------|
-| **A** | Read-only app: Quarkus + Neo4j + React + Countdown + Trailers + Editions | 🔴 Planned |
-| **B** | AI monitoring: LLM-powered source extraction, semantic diff, events | 🔴 Planned |
-| **C** | Push notifications: FCM, device registration, preferences, deep links | 🔴 Planned |
-| **D** | Retail monitoring: AI-powered retailer scraping, availability tracking | 🔴 Planned |
-| **E** | Production: CI/CD, Vercel deploy, Cloud Run deploy, monitoring | 🔴 Planned |
+| **A** | Read-only app: Quarkus + Neo4j + React + Countdown + Trailers + Editions | ✅ Done |
+| **B** | AI monitoring: LLM-powered source extraction, semantic diff, events | ✅ Done |
+| **C** | Push notifications: FCM, device registration, preferences, deep links | ✅ Done |
+| **D** | Retail monitoring: AI-powered retailer scraping, availability tracking | ✅ Done |
+| **E** | Production: CI/CD, Vercel deploy, Cloud Run deploy, monitoring | 🔴 In progress |
+
+### Monitored Sources
+
+| Source | Type | Check Interval |
+|--------|------|---------------:|
+| Rockstar GTA VI Main Page | Official | 10 min |
+| Rockstar GTA VI Editions | Official | 10 min |
+| Rockstar GTA VI Media/Videos | Official | 15 min |
+| Rockstar YouTube Channel | Official | 30 min |
+| PlayStation Store (CH) | Official Store | 30 min |
+| Xbox Store (CH) | Official Store | 30 min |
+| Rockstar Games Store | Official Store | 30 min |
+| Galaxus (CH) | Swiss Retailer | 15 min |
+| WOG.ch (CH) | Swiss Retailer | 30 min |
+| Amazon.fr (FR) | Retailer | 30 min |
+
+### Retailers Shown on Edition Cards
+
+When a retailer monitor detects GTA VI products (via AI extraction), they appear as "Where to order" links on the corresponding edition card — with price, currency, platform, and availability status. The app currently tracks **6 retailers** across Switzerland and France.
 
 ---
 

@@ -21,31 +21,42 @@ The original spec calls for PostgreSQL + Hibernate ORM Panache + Flyway. We use 
 
 ---
 
-## Why AI-Powered Scraping (LangChain4j + LLM) instead of CSS Selectors
+## Why AI-Powered Scraping (LangChain4j + Structured Output) instead of CSS Selectors
 
 The original spec calls for Jsoup + per-site CSS selectors + fixture tests for every parser change.
 
-**We use LLM-based extraction instead.**
+**We use LangChain4j with strongly-typed DTOs instead** — the same pattern as Radar's `CompanySentimentAiService`.
 
 ### How it works
 
 ```
 1. Fetch page HTML via Jsoup (with ETag/If-Modified-Since for caching)
-2. Send HTML + extraction prompt to DeepSeek via LangChain4j
-3. DeepSeek returns structured JSON with the relevant data
-4. Validate JSON schema on our side
+2. Pass HTML to the typed @RegisterAiService (e.g. RetailerProductsExtractor)
+3. LangChain4j automatically marshals the LLM's JSON response into a Java record
+4. The record is compiler-enforced — the LLM cannot return malformed fields
 5. Normalize + hash + diff as normal
 ```
+
+### Typed extractors
+
+Each source type has its own `@RegisterAiService` interface returning a Java record:
+
+| Interface | Returns | Fields |
+|-----------|---------|--------|
+| `RockstarMainExtractor` | `RockstarMainData` | releaseDate, platforms, preorderAvailable |
+| `RockstarEditionsExtractor` | `RockstarEditionsData` | editions[], hasCollectorEdition |
+| `RockstarMediaExtractor` | `RockstarMediaData` | videos[] with type classification |
+| `RetailerProductsExtractor` | `RetailerProductsData` | products[] with name, price, availability, URL |
 
 ### Why this is better
 
 | Concern | CSS Selector Approach | AI Extraction Approach |
 |---------|----------------------|----------------------|
 | Site redesign | Parser breaks, needs emergency fix | AI adapts automatically |
-| New source | Write new parser (hours) | Add URL + prompt (minutes) |
+| New source | Write new parser (hours) | Add URL + a typed AiService (minutes) |
 | Unstructured data | Can't handle | AI extracts meaning from any HTML |
-| Maintenance | Per-source fixture updates | Same prompt works across redesigns |
-| Retailer pages | Each needs custom selectors | Same AI approach for all |
+| Output validation | Manual JSON.parse + field checks | Java record — compiler-enforced |
+| Retailer pages | Each needs custom selectors | Same pattern for all retailers |
 | News articles | Need NLP anyway | Built-in understanding |
 
 ### Cost
