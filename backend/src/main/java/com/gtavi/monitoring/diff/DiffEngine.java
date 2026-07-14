@@ -266,7 +266,7 @@ public class DiffEngine {
                     "COLLECTOR_RETAILER:" + sourceCode + ":" + sanitizeKey(name)));
             } else {
                 events.add(createEvent(sourceCode, sourceUrl,
-                    "RETAILER_LISTING_CREATED", "RETAIL",
+                    "RETAILER_LISTING_CREATED", "MAJOR",
                     "New listing at " + sourceCode + ": " + name,
                     "A new GTA VI product listing was detected.",
                     null, name,

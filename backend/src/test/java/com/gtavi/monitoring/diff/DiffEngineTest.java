@@ -179,7 +179,7 @@ class DiffEngineTest {
         List<ChangeEvent> events = engine.diff("GALAXUS", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("RETAILER_LISTING_CREATED", events.get(0).getEventType());
-        assertEquals("RETAIL", events.get(0).getPriority());
+        assertEquals("MAJOR", events.get(0).getPriority());
         assertTrue(events.get(0).getTitle().contains("GALAXUS"));
     }
 
