@@ -11,18 +11,16 @@ type PermissionState = 'idle' | 'requesting' | 'granted' | 'denied' | 'token_fai
 
 export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Props) {
   const [state, setState] = useState<PermissionState>(() => {
-    // User explicitly disabled → respect that, even if browser permission is granted
     if (localStorage.getItem('gta-vi-notifications-disabled') === 'true') return 'idle';
     if (localStorage.getItem('gta-vi-notifications-enabled') === 'true') return 'granted';
     const perm = 'Notification' in window ? Notification.permission : 'default';
     if (perm === 'denied') return 'denied';
     return 'idle';
   });
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
-  // Detect browser permission changes (e.g. user re-grants permission manually)
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'granted') {
-      // Only auto-detect grant if the user hasn't explicitly disabled
       const userDisabled = localStorage.getItem('gta-vi-notifications-disabled') === 'true';
       if (!userDisabled && state !== 'granted') {
         setState('granted');
@@ -33,18 +31,21 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
 
   const requestPermission = async () => {
     setState('requesting');
+    setErrorDetail(null);
     try {
       const token = await enablePushNotifications(installationId);
-      if (token) {
-        setState('granted');
-        localStorage.removeItem('gta-vi-notifications-disabled');
-        localStorage.setItem('gta-vi-notifications-enabled', 'true');
-        onEnabled(token);
+      setState('granted');
+      localStorage.removeItem('gta-vi-notifications-disabled');
+      localStorage.setItem('gta-vi-notifications-enabled', 'true');
+      onEnabled(token);
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      if (msg === 'PERMISSION_DENIED') {
+        setState('denied');
       } else {
-        setState(Notification.permission === 'denied' ? 'denied' : 'token_failed');
+        setState('token_failed');
+        setErrorDetail(msg);
       }
-    } catch {
-      setState(Notification.permission === 'denied' ? 'denied' : 'token_failed');
     }
   };
 
@@ -55,7 +56,6 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
     onDisabled();
   };
 
-  // ── Granted state: compact active card ────────────────────────────
   if (state === 'granted') {
     return (
       <div className="bg-gradient-to-r from-accent-teal/10 to-bg-card rounded-xl p-4 border border-accent-teal/20">
@@ -83,7 +83,6 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
     );
   }
 
-  // ── Idle / requesting / denied / token_failed ─────────────────────
   return (
     <div className="bg-gradient-to-r from-accent-purple/40 to-bg-card rounded-xl p-5 border border-accent-purple/30">
       <div className="flex items-start gap-3">
@@ -117,10 +116,18 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
             </p>
           )}
           {state === 'token_failed' && (
-            <p className="text-xs text-text-muted mt-2">
-              Could not register for push notifications. This browser may not support
-              Service Workers (e.g. Brave on Android). Try Chrome or a different browser.
-            </p>
+            <div className="text-xs text-text-muted mt-2 space-y-1">
+              <p>
+                Could not register for push notifications.
+                {errorDetail && (
+                  <span className="block font-mono text-accent-orange mt-1">Error: {errorDetail}</span>
+                )}
+              </p>
+              <p>
+                Try opening DevTools → Application → Service Workers → Unregister any
+                'firebase-messaging-sw' worker, then refresh and try again.
+              </p>
+            </div>
           )}
         </div>
       </div>
