@@ -265,8 +265,8 @@ public class MonitoringOrchestrator {
                         o.preorderAvailable = $preorder,
                         o.lastSuccessfulCheckAt = datetime(),
                         o.lastChangedAt = coalesce(o.lastChangedAt, datetime()),
+                        o.createdAt = coalesce(o.createdAt, datetime()),
                         o.updatedAt = datetime()
-                    ON CREATE SET o.createdAt = datetime()
                     """, Map.ofEntries(
                         Map.entry("id", offerId),
                         Map.entry("editionId", editionId),
