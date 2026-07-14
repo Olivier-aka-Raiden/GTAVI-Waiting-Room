@@ -27,6 +27,7 @@ public class TestPushResource {
 
     @POST
     @Path("/push")
+    @Consumes(MediaType.APPLICATION_JSON)
     public Response testPush(
         @HeaderParam("X-Internal-Secret") String secret,
         @QueryParam("installationId") String installationId
