@@ -3,6 +3,7 @@ package com.gtavi.monitoring.core;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.gtavi.domain.ChangeEvent;
 import com.gtavi.monitoring.diff.DiffEngine;
+import com.gtavi.notification.NotificationService;
 import com.gtavi.service.GameService;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -15,7 +16,7 @@ import java.util.*;
 /**
  * Orchestrates the full monitoring pipeline:
  * 1. Select due sources
- * 2. Fetch → Extract → Normalize → Hash → Load previous → Diff → Store
+ * 2. Fetch → Extract → Normalize → Hash → Load previous → Diff → Store → Notify
  */
 @ApplicationScoped
 public class MonitoringOrchestrator {
@@ -24,15 +25,18 @@ public class MonitoringOrchestrator {
     private final Normalizer normalizer;
     private final DiffEngine diffEngine;
     private final GameService gameService;
+    private final NotificationService notificationService;
     private final Instance<GameSourceMonitor> allMonitors;
 
     public MonitoringOrchestrator(Driver driver, Normalizer normalizer,
                                    DiffEngine diffEngine, GameService gameService,
+                                   NotificationService notificationService,
                                    Instance<GameSourceMonitor> allMonitors) {
         this.driver = driver;
         this.normalizer = normalizer;
         this.diffEngine = diffEngine;
         this.gameService = gameService;
+        this.notificationService = notificationService;
         this.allMonitors = allMonitors;
     }
 
@@ -71,6 +75,12 @@ public class MonitoringOrchestrator {
 
                     for (ChangeEvent event : events) {
                         saveEvent(event);
+                        // Send push notifications to eligible devices
+                        int notified = notificationService.sendNotifications(event);
+                        if (notified > 0) {
+                            Log.infof("Sent %d push notifications for event: %s",
+                                notified, event.getEventType());
+                        }
                     }
                     eventsCreated += events.size();
 
