@@ -244,8 +244,7 @@ public class DeviceResource {
                     np.outOfStock = coalesce($outOfStock, np.outOfStock),
                     np.backInStock = coalesce($backInStock, np.backInStock),
                     np.updatedAt = datetime()
-                """, Map.of(
-                    "id", installationId,
+                """, params("id", installationId,
                     "collectorAnnounce", body.get("collectorEditionAnnouncement"),
                     "collectorPreorder", body.get("collectorEditionPreorder"),
                     "releaseDate", body.get("releaseDateChanges"),
@@ -265,5 +264,17 @@ public class DeviceResource {
             return node.get(key).asBoolean();
         }
         return defaultVal;
+    }
+
+    /** Null-safe alternative to Map.of() — accepts null values for Cypher coalesce(). */
+    private static Map<String, Object> params(String k1, Object v1, String k2, Object v2,
+                                               String k3, Object v3, String k4, Object v4,
+                                               String k5, Object v5, String k6, Object v6,
+                                               String k7, Object v7, String k8, Object v8,
+                                               String k9, Object v9, String k10, Object v10) {
+        var map = new java.util.HashMap<String, Object>();
+        map.put(k1, v1); map.put(k2, v2); map.put(k3, v3); map.put(k4, v4); map.put(k5, v5);
+        map.put(k6, v6); map.put(k7, v7); map.put(k8, v8); map.put(k9, v9); map.put(k10, v10);
+        return map;
     }
 }
