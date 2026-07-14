@@ -16,8 +16,8 @@ export function initFirebase() {
 
 /**
  * Request notification permission, get an FCM token, and register it with
- * the backend. Returns the token string if successful, or null.
- * On failure, the reason is attached to the error's message field.
+ * the backend. Returns the token string if successful. Throws on failure
+ * with a descriptive error message.
  */
 export async function enablePushNotifications(installationId: string): Promise<string> {
   const m = initFirebase();
@@ -29,16 +29,14 @@ export async function enablePushNotifications(installationId: string): Promise<s
     throw new Error('PERMISSION_DENIED');
   }
 
-  // 2. Ensure we get the latest service worker (not a stale cached one)
-  const swReg = await getSwRegistration();
+  // 2. Get a fully active service worker registration
+  const swReg = await getActiveSwRegistration();
 
   // 3. Get the FCM token
   let token: string;
   try {
     token = await getToken(m, { vapidKey, serviceWorkerRegistration: swReg });
   } catch (err: any) {
-    // Firebase errors have: code (string like 'messaging/xxx'), message, name
-    // Non-Firebase errors (network, SW init) may only have message or a numeric code
     const detail = [
       err?.code,
       err?.message,
@@ -73,8 +71,13 @@ export function onForegroundMessage(callback: (payload: any) => void) {
   return onMessage(m, callback);
 }
 
-async function getSwRegistration(): Promise<ServiceWorkerRegistration> {
-  // Unregister any stale service worker first, then register fresh
+/**
+ * Register the Firebase SW and wait for it to become fully active.
+ * Unregisters any stale SWs first, then blocks until the new one
+ * reaches the 'activated' state so that PushManager.subscribe() works.
+ */
+async function getActiveSwRegistration(): Promise<ServiceWorkerRegistration> {
+  // Unregister all stale FCM workers
   const registrations = await navigator.serviceWorker.getRegistrations();
   for (const reg of registrations) {
     if (reg.active?.scriptURL.includes('firebase-messaging-sw')) {
@@ -82,9 +85,37 @@ async function getSwRegistration(): Promise<ServiceWorkerRegistration> {
       await reg.unregister();
     }
   }
-  // Small delay to let the unregister settle
-  await new Promise(r => setTimeout(r, 300));
-  return navigator.serviceWorker.register('/firebase-messaging-sw.js');
+
+  // Register fresh
+  const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+
+  // Already active — done
+  if (reg.active) {
+    console.log('[FCM] Service worker active');
+    return reg;
+  }
+
+  // Wait for installing/waiting worker to become active
+  const worker = reg.installing || reg.waiting;
+  if (!worker) {
+    // No worker at all — something is wrong
+    throw new Error('SW_NO_WORKER');
+  }
+
+  console.log('[FCM] Waiting for service worker to activate...');
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('SW_ACTIVATE_TIMEOUT')), 15_000);
+    worker.addEventListener('statechange', function onStateChange() {
+      if (worker.state === 'activated') {
+        worker.removeEventListener('statechange', onStateChange);
+        clearTimeout(timeout);
+        console.log('[FCM] Service worker activated');
+        resolve();
+      }
+    });
+  });
+
+  return reg;
 }
 
 function getPlatform(): string {
