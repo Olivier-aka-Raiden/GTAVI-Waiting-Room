@@ -156,9 +156,46 @@ public class DeviceResource {
                     "backInStock", getBool(node, "backInStock", true)
                 )).build();
             }
-            return Response.status(Response.Status.NOT_FOUND)
-                .entity(Map.of("error", "Device not found"))
-                .build();
+
+            // Device not found — auto-create with defaults (same as first PUT)
+            session.run("""
+                MERGE (d:DeviceInstallation {installationId: $id})
+                ON CREATE SET d.platform = 'UNKNOWN',
+                    d.notificationsEnabled = false,
+                    d.active = true,
+                    d.lastSeenAt = datetime(),
+                    d.createdAt = datetime(),
+                    d.updatedAt = datetime()
+                ON MATCH SET d.lastSeenAt = datetime(), d.updatedAt = datetime()
+                """, Map.of("id", installationId));
+
+            session.run("""
+                MATCH (d:DeviceInstallation {installationId: $id})
+                MERGE (d)-[:HAS_PREFERENCES]->(np:NotificationPreference)
+                ON CREATE SET
+                    np.collectorEditionAnnouncement = true,
+                    np.collectorEditionPreorder = true,
+                    np.releaseDateChanges = true,
+                    np.newOfficialTrailers = true,
+                    np.majorRockstarNews = true,
+                    np.generalNews = false,
+                    np.priceChanges = false,
+                    np.outOfStock = false,
+                    np.backInStock = true,
+                    np.updatedAt = datetime()
+                """, Map.of("id", installationId));
+
+            return Response.ok(Map.of(
+                "collectorEditionAnnouncement", true,
+                "collectorEditionPreorder", true,
+                "releaseDateChanges", true,
+                "newOfficialTrailers", true,
+                "majorRockstarNews", true,
+                "generalNews", false,
+                "priceChanges", false,
+                "outOfStock", false,
+                "backInStock", true
+            )).build();
         }
     }
 
