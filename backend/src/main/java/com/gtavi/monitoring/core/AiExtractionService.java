@@ -91,6 +91,8 @@ public class AiExtractionService {
             .replaceAll("<!--.*?-->", "")
             // data-* attributes (bloat)
             .replaceAll("\\sdata-[a-zA-Z0-9-]+=(?:\"[^\"]*\"|'[^']*')", "")
+            // class attributes (CSS only — zero semantic value for LLM extraction)
+            .replaceAll("\\sclass=(?:\"[^\"]*\"|'[^']*')", "")
             // Collapse whitespace (blank lines / runs of spaces)
             .replaceAll("\\n\\s*\\n", "\n")
             .replaceAll("[ \\t]{2,}", " ");

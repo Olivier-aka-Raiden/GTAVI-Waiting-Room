@@ -69,7 +69,7 @@ class AiExtractionServiceTest {
         String cleaned = AiExtractionService.stripNoise(html);
         assertFalse(cleaned.contains("data-testid"), "data-testid removed");
         assertFalse(cleaned.contains("data-qa"), "data-qa removed");
-        assertTrue(cleaned.contains("class='foo'"), "class preserved");
+        assertFalse(cleaned.contains("class="), "class attribute removed");
         assertTrue(cleaned.contains("click"), "text preserved");
     }
 
