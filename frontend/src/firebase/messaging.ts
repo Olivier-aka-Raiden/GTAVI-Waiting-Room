@@ -37,10 +37,16 @@ export async function enablePushNotifications(installationId: string): Promise<s
   try {
     token = await getToken(m, { vapidKey, serviceWorkerRegistration: swReg });
   } catch (err: any) {
-    const code = err?.code ?? 'UNKNOWN';
-    const msg = err?.message ?? String(err);
-    console.error('[FCM] getToken failed:', code, msg);
-    throw new Error(`TOKEN_${code}`);
+    // Firebase errors have: code (string like 'messaging/xxx'), message, name
+    // Non-Firebase errors (network, SW init) may only have message or a numeric code
+    const detail = [
+      err?.code,
+      err?.message,
+      err?.name !== 'FirebaseError' ? err?.name : null,
+      err?.toString?.()
+    ].filter(Boolean).join(' | ');
+    console.error('[FCM] getToken failed:', err);
+    throw new Error(detail || 'Unknown FCM error');
   }
 
   if (!token) {
