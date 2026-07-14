@@ -32,7 +32,16 @@ export async function enablePushNotifications(installationId: string): Promise<s
   // 2. Get a fully active service worker registration
   const swReg = await getActiveSwRegistration();
 
-  // 3. Get the FCM token
+  // 2b. Clear any stale push subscriptions that might cause 304/cache issues
+  try {
+    const sub = await swReg.pushManager.getSubscription();
+    if (sub) {
+      console.log('[FCM] Unsubscribing stale push subscription');
+      await sub.unsubscribe();
+    }
+  } catch { /* non-critical */ }
+
+  // 3. Get the FCM token (this creates a fresh push subscription)
   let token: string;
   try {
     token = await getToken(m, { vapidKey, serviceWorkerRegistration: swReg });
@@ -41,14 +50,13 @@ export async function enablePushNotifications(installationId: string): Promise<s
       err?.code,
       err?.message,
       err?.name !== 'FirebaseError' ? err?.name : null,
-      err?.toString?.()
     ].filter(Boolean).join(' | ');
     console.error('[FCM] getToken failed:', err);
     throw new Error(detail || 'Unknown FCM error');
   }
 
   if (!token) {
-    console.warn('[FCM] No token returned — missing VAPID key or Firebase project not configured for web push');
+    console.warn('[FCM] No token returned');
     throw new Error('NO_TOKEN');
   }
 
@@ -98,7 +106,6 @@ async function getActiveSwRegistration(): Promise<ServiceWorkerRegistration> {
   // Wait for installing/waiting worker to become active
   const worker = reg.installing || reg.waiting;
   if (!worker) {
-    // No worker at all — something is wrong
     throw new Error('SW_NO_WORKER');
   }
 
@@ -123,4 +130,14 @@ function getPlatform(): string {
   if (/Android/i.test(ua)) return 'ANDROID';
   if (/iPhone|iPad|iPod/i.test(ua)) return 'IOS';
   return 'WEB';
+}
+
+/** True if the current browser is Brave on desktop (where push is unreliable). */
+export function isBraveDesktop(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  // Brave sets navigator.brave
+  const nav = navigator as any;
+  if (nav.brave?.isBrave) return !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  // Fallback: Brave's push service is always used on desktop unless opted out
+  return false;
 }

@@ -123,10 +123,24 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
                   <span className="block font-mono text-accent-orange mt-1">Error: {errorDetail}</span>
                 )}
               </p>
-              <p>
-                Try opening DevTools → Application → Service Workers → Unregister any
-                'firebase-messaging-sw' worker, then refresh and try again.
-              </p>
+              {errorDetail?.includes('push service') || errorDetail?.includes('304') ? (
+                <>
+                  <p className="font-semibold text-accent-gold mt-2">Brave Desktop:</p>
+                  <p>
+                    Open <code className="text-xs bg-bg-card px-1 rounded">brave://settings/privacy</code> →
+                    enable <strong>"Use Google services for push messaging"</strong> →
+                    refresh page and try again.
+                  </p>
+                  <p className="text-text-muted">
+                    Or use Chrome / Firefox where push works natively.
+                  </p>
+                </>
+              ) : (
+                <p>
+                  Try opening DevTools → Application → Service Workers → Unregister any
+                  'firebase-messaging-sw' worker, then refresh and try again.
+                </p>
+              )}
             </div>
           )}
         </div>
