@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { enablePushNotifications } from '../../firebase/messaging';
 
 interface Props {
@@ -6,8 +6,25 @@ interface Props {
   onEnabled: (token: string) => void;
 }
 
+type PermissionState = 'idle' | 'requesting' | 'granted' | 'denied' | 'token_failed';
+
 export function PushPermissionCard({ installationId, onEnabled }: Props) {
-  const [state, setState] = useState<'idle' | 'requesting' | 'granted' | 'denied'>('idle');
+  const [state, setState] = useState<PermissionState>(() => {
+    // Restore persisted state on mount so enabled cards don't flash on refresh
+    if (localStorage.getItem('gta-vi-notifications-enabled') === 'true') return 'granted';
+    // Check the actual browser permission
+    const perm = 'Notification' in window ? Notification.permission : 'default';
+    if (perm === 'denied') return 'denied';
+    return 'idle';
+  });
+
+  // If permission was already granted externally (e.g. another session, or
+  // browser setting change), pick it up without re-prompting.
+  useEffect(() => {
+    if (state !== 'granted' && 'Notification' in window && Notification.permission === 'granted') {
+      setState('granted');
+    }
+  }, [state]);
 
   const requestPermission = async () => {
     setState('requesting');
@@ -15,12 +32,15 @@ export function PushPermissionCard({ installationId, onEnabled }: Props) {
       const token = await enablePushNotifications(installationId);
       if (token) {
         setState('granted');
+        localStorage.setItem('gta-vi-notifications-enabled', 'true');
         onEnabled(token);
       } else {
-        setState('denied');
+        // Permission was granted but FCM token acquisition failed
+        // (Brave blocking Service Workers, no SW registered, etc.)
+        setState(Notification.permission === 'denied' ? 'denied' : 'token_failed');
       }
     } catch {
-      setState('denied');
+      setState(Notification.permission === 'denied' ? 'denied' : 'token_failed');
     }
   };
 
@@ -40,20 +60,28 @@ export function PushPermissionCard({ installationId, onEnabled }: Props) {
           </p>
           <button
             onClick={requestPermission}
-            disabled={state === 'requesting' || state === 'denied'}
+            disabled={state === 'requesting' || state === 'denied' || state === 'token_failed'}
             className={`mt-3 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-              state === 'denied'
+              state === 'denied' || state === 'token_failed'
                 ? 'bg-text-muted/20 text-text-muted cursor-not-allowed'
                 : 'bg-accent-pink text-text-dark hover:opacity-90'
             }`}
           >
             {state === 'requesting' ? 'Requesting...' :
              state === 'denied' ? 'Notifications blocked' :
+             state === 'token_failed' ? 'Notifications unavailable' :
              'Enable alerts'}
           </button>
           {state === 'denied' && (
             <p className="text-xs text-text-muted mt-2">
-              Enable notifications in your browser settings to receive alerts.
+              Notifications are blocked in your browser. Open your browser settings
+              and allow notifications for this site, then refresh.
+            </p>
+          )}
+          {state === 'token_failed' && (
+            <p className="text-xs text-text-muted mt-2">
+              Could not register for push notifications. This browser may not support
+              Service Workers (e.g. Brave on Android). Try Chrome or a different browser.
             </p>
           )}
         </div>

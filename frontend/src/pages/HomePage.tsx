@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getGameOverview } from '../api/game';
-import { registerDevice } from '../api/devices';
+import { registerDevice, getPreferences, updatePreferences } from '../api/devices';
 import type { GameOverview } from '../types/game';
 import { useCountdown } from '../hooks/useCountdown';
 import { Countdown } from '../features/countdown/Countdown';
@@ -10,6 +10,21 @@ import { EventTimeline } from '../features/events/EventTimeline';
 import { PushPermissionCard } from '../features/notifications/PushPermissionCard';
 import { NotificationSettings } from '../features/notifications/NotificationSettings';
 import type { NotificationPreferences } from '../api/devices';
+
+// ── Default preferences (used as initial state while loading) ──────────────
+const DEFAULT_PREFS: NotificationPreferences = {
+  collectorEditionAnnouncement: true,
+  collectorEditionPreorder: true,
+  releaseDateChanges: true,
+  newOfficialTrailers: true,
+  majorRockstarNews: true,
+  generalNews: false,
+  priceChanges: false,
+  outOfStock: false,
+  backInStock: true,
+};
+
+// ── Sub-components ─────────────────────────────────────────────────────────
 
 function VerificationBadge({ lastCheck, healthy }: { lastCheck: string | null; healthy: boolean }) {
   if (!lastCheck) return null;
@@ -118,39 +133,69 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
+// ── Main page ──────────────────────────────────────────────────────────────
+
 export function HomePage() {
   const [data, setData] = useState<GameOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [installationId] = useState(() =>
-    localStorage.getItem('gta-vi-installation-id') || crypto.randomUUID()
-  );
-  const [prefs, setPrefs] = useState<NotificationPreferences>(() => ({
-    collectorEditionAnnouncement: true,
-    collectorEditionPreorder: true,
-    releaseDateChanges: true,
-    newOfficialTrailers: true,
-    majorRockstarNews: true,
-    generalNews: false,
-    priceChanges: false,
-    outOfStock: false,
-    backInStock: true,
-  }));
+  const [installationId] = useState(() => {
+    const stored = localStorage.getItem('gta-vi-installation-id');
+    if (stored) return stored;
+    const id = crypto.randomUUID();
+    localStorage.setItem('gta-vi-installation-id', id);
+    return id;
+  });
+  const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_PREFS);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
-  const fetchData = () => {
+  const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
     getGameOverview()
       .then(setData)
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  const handleNotificationEnabled = (_token: string) => {
-    localStorage.setItem('gta-vi-installation-id', installationId);
-  };
+  // ── Load preferences from backend on mount ──────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    getPreferences(installationId)
+      .then(backendPrefs => {
+        if (!cancelled) {
+          setPrefs(backendPrefs);
+          setPrefsLoaded(true);
+        }
+      })
+      .catch(() => {
+        // Backend unreachable or no prefs yet — use defaults (already set)
+        if (!cancelled) setPrefsLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [installationId]);
 
-  useEffect(() => { fetchData(); }, []);
+  // ── Persist preferences whenever they change (debounced) ────────────────
+  useEffect(() => {
+    if (!prefsLoaded) return; // Don't persist the initial default before backend load
+    const timer = setTimeout(() => {
+      updatePreferences(installationId, prefs).catch(() => {
+        // Silently ignore — prefs are still usable locally
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [prefs, installationId, prefsLoaded]);
+
+  const handleNotificationEnabled = useCallback((_token: string) => {
+    // installationId is already persisted in localStorage (see useState above)
+    // notifications-enabled flag is set by PushPermissionCard
+  }, []);
+
+  const handlePrefChange = useCallback((update: Partial<NotificationPreferences>) => {
+    setPrefs(p => ({ ...p, ...update }));
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   if (loading) return <LoadingSkeleton />;
   if (error) return <ErrorState message={error} onRetry={fetchData} />;
@@ -184,7 +229,7 @@ export function HomePage() {
           />
           <NotificationSettings
             preferences={prefs}
-            onChange={(update) => setPrefs(p => ({ ...p, ...update }))}
+            onChange={handlePrefChange}
           />
         </div>
 
