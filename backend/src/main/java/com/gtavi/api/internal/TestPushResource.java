@@ -9,7 +9,7 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.neo4j.driver.Driver;
 
-import java.util.Map;
+import java.util.*;
 
 /**
  * Test endpoint for push notifications — sends a test message
@@ -37,57 +37,84 @@ public class TestPushResource {
                 .entity(Map.of("error", "unauthorized")).build();
         }
 
+        var results = new ArrayList<Map<String, Object>>();
+
         try (var session = driver.session()) {
             String query;
             Map<String, Object> params;
 
             if (installationId != null && !installationId.isEmpty()) {
                 query = """
-                    MATCH (d:DeviceInstallation {installationId: $id, active: true})
+                    MATCH (d:DeviceInstallation {installationId: $id})
                     WHERE d.pushToken IS NOT NULL AND d.pushToken <> ''
-                    RETURN d.installationId AS id, d.pushToken AS token
+                    RETURN d.installationId AS id,
+                           d.pushToken AS token,
+                           d.notificationsEnabled AS enabled,
+                           d.active AS active
                     """;
                 params = Map.of("id", installationId);
             } else {
                 query = """
                     MATCH (d:DeviceInstallation {active: true})
                     WHERE d.pushToken IS NOT NULL AND d.pushToken <> ''
-                    RETURN d.installationId AS id, d.pushToken AS token
+                    RETURN d.installationId AS id,
+                           d.pushToken AS token,
+                           d.notificationsEnabled AS enabled,
+                           d.active AS active
                     LIMIT 5
                     """;
                 params = Map.of();
             }
 
-            var result = session.run(query, params);
+            var dbResult = session.run(query, params);
+            int attempted = 0;
             int sent = 0;
 
-            while (result.hasNext()) {
-                var row = result.next();
+            while (dbResult.hasNext()) {
+                var row = dbResult.next();
                 String token = row.get("token").asString();
                 String id = row.get("id").asString();
+                boolean enabled = row.containsKey("enabled") && !row.get("enabled").isNull()
+                    && row.get("enabled").asBoolean();
+                boolean active = row.containsKey("active") && !row.get("active").isNull()
+                    && row.get("active").asBoolean();
 
-                String messageId = fcmSender.send(token,
+                attempted++;
+                String fcmResult = fcmSender.send(token,
                     "🧪 Test Notification",
                     "This is a test push from GTA VI Waiting Room. If you see this, push works! ✅",
                     Map.of("test", "true", "installationId", id));
 
-                if (messageId != null && !"INVALID_TOKEN".equals(messageId)) {
-                    sent++;
-                    Log.infof("Test push sent to device %s (msg %s)", id, messageId);
-                } else {
-                    Log.warnf("Test push FAILED for device %s: %s", id, messageId);
-                }
+                boolean success = fcmResult != null
+                    && !"INVALID_TOKEN".equals(fcmResult)
+                    && !"disabled".equals(fcmResult);
+
+                if (success) sent++;
+
+                results.add(Map.of(
+                    "installationId", id,
+                    "tokenPrefix", token.substring(0, Math.min(8, token.length())) + "...",
+                    "notificationsEnabled", enabled,
+                    "active", active,
+                    "fcmResult", fcmResult != null ? fcmResult : "null",
+                    "success", success
+                ));
+
+                Log.infof("Test push: device=%s success=%s result=%s", id, success, fcmResult);
             }
 
             return Response.ok(Map.of(
                 "status", "completed",
-                "devicesFound", result != null ? 1 : 0,
-                "sent", sent
+                "fcmEnabled", fcmSender.isEnabled(),
+                "devicesFound", attempted,
+                "sent", sent,
+                "results", results
             )).build();
         } catch (Exception e) {
             Log.error("Test push failed", e);
             return Response.serverError()
-                .entity(Map.of("error", e.getMessage())).build();
+                .entity(Map.of("error", e.getMessage(),
+                    "fcmEnabled", fcmSender.isEnabled())).build();
         }
     }
 }
