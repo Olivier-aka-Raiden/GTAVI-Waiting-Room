@@ -43,9 +43,10 @@ ios/
 .capacitor/
 *.tsbuildinfo
 
-# Firebase
+# Firebase (generated from template at build time)
 google-services.json
 GoogleService-Info.plist
+frontend/public/firebase-messaging-sw.js
 
 # Test
 coverage/
