@@ -23,22 +23,6 @@ public class DeviceResource {
     Driver driver;
 
     /**
-     * Handle CORS preflight for all device endpoints.
-     * Quarkus CORS filter should handle this, but RESTEasy Reactive path-matching
-     * interferes. Explicit handler guarantees browsers can PUT/POST.
-     */
-    @OPTIONS
-    @Path("{path:.*}")
-    public Response corsPreflight() {
-        return Response.ok()
-            .header("Access-Control-Allow-Origin", "*")
-            .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-            .header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-            .header("Access-Control-Max-Age", "86400")
-            .build();
-    }
-
-    /**
      * Register or update a device installation.
      */
     @POST
