@@ -93,6 +93,10 @@ public class AiExtractionService {
             .replaceAll("\\sdata-[a-zA-Z0-9-]+=(?:\"[^\"]*\"|'[^']*')", "")
             // class attributes (CSS only — zero semantic value for LLM extraction)
             .replaceAll("\\sclass=(?:\"[^\"]*\"|'[^']*')", "")
+            // style attributes (inline CSS — also useless for extraction)
+            .replaceAll("\\sstyle=(?:\"[^\"]*\"|'[^']*')", "")
+            // id attributes (DOM identity — no semantic value)
+            .replaceAll("\\sid=(?:\"[^\"]*\"|'[^']*')", "")
             // Collapse whitespace (blank lines / runs of spaces)
             .replaceAll("\\n\\s*\\n", "\n")
             .replaceAll("[ \\t]{2,}", " ");

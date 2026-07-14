@@ -74,6 +74,17 @@ class AiExtractionServiceTest {
     }
 
     @Test
+    void stripNoiseRemovesPresentationAttributes() {
+        String html = "<div id='hero' class='card large' style='color:red;display:flex' data-track='abc'>buy now</div>";
+        String cleaned = AiExtractionService.stripNoise(html);
+        assertFalse(cleaned.contains("class="), "class removed");
+        assertFalse(cleaned.contains("style="), "style removed");
+        assertFalse(cleaned.contains("id="), "id removed");
+        assertFalse(cleaned.contains("data-track"), "data attr removed");
+        assertTrue(cleaned.contains("buy now"), "text preserved");
+    }
+
+    @Test
     void stripNoiseCollapsesWhitespace() {
         String html = "<div>   hello    world   </div>";
         String cleaned = AiExtractionService.stripNoise(html);
