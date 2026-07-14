@@ -18,6 +18,7 @@ public class AiExtractionService {
     @Inject RockstarEditionsExtractor rockstarEditions;
     @Inject RockstarMediaExtractor rockstarMedia;
     @Inject RetailerProductsExtractor retailerProducts;
+    @Inject YoutubeRssExtractor youtubeRss;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -44,6 +45,10 @@ public class AiExtractionService {
                 }
                 case "retailer" -> {
                     RetailerProductsData data = retailerProducts.extract(truncatedHtml);
+                    yield mapper.convertValue(data, JsonNode.class);
+                }
+                case "youtube_rss" -> {
+                    var data = youtubeRss.extract(truncatedHtml);
                     yield mapper.convertValue(data, JsonNode.class);
                 }
                 default -> {
