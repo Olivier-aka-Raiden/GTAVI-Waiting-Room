@@ -40,6 +40,22 @@ class AiExtractionServiceTest {
     }
 
     @Test
+    void stripNoiseRemovesNavTags() {
+        String html = "<html><nav><ul><li>Home</li></ul></nav><body><p>editions</p></body></html>";
+        String cleaned = AiExtractionService.stripNoise(html);
+        assertFalse(cleaned.contains("<nav"), "nav tag removed");
+        assertTrue(cleaned.contains("editions"), "content preserved");
+    }
+
+    @Test
+    void stripNoiseRemovesFooterTags() {
+        String html = "<body><p>products</p><footer>Copyright 2026</footer></body>";
+        String cleaned = AiExtractionService.stripNoise(html);
+        assertFalse(cleaned.contains("<footer"), "footer tag removed");
+        assertTrue(cleaned.contains("products"), "content preserved");
+    }
+
+    @Test
     void stripNoiseRemovesSvg() {
         String html = "<div><svg><path d='M0,0'/></svg><p>text</p></div>";
         String cleaned = AiExtractionService.stripNoise(html);

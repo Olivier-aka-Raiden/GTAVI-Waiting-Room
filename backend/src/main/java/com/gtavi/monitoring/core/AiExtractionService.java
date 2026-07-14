@@ -16,7 +16,7 @@ import jakarta.inject.Inject;
 @ApplicationScoped
 public class AiExtractionService {
 
-    private static final int MAX_CHARS = 60_000; // bumped from 40K — small cost increase, better retailer coverage
+    private static final int MAX_CHARS = 120_000; // bumped from 60K — Rockstar pages are ~62K after noise stripping; editions were cut off
 
     @Inject RockstarMainExtractor rockstarMain;
     @Inject RockstarEditionsExtractor rockstarEditions;
@@ -72,8 +72,9 @@ public class AiExtractionService {
 
     /**
      * Remove elements the LLM doesn't need:
-     * <script>...</script>, <style>...</style>, <noscript>...</noscript>,
-     * <svg>...</svg>, HTML comments <!-- ... -->, and collapse whitespace.
+     * &lt;script&gt;...&lt;/script&gt;, &lt;style&gt;...&lt;/style&gt;, &lt;noscript&gt;...&lt;/noscript&gt;,
+     * &lt;nav&gt;...&lt;/nav&gt;, &lt;footer&gt;...&lt;/footer&gt;, &lt;header&gt;...&lt;/header&gt;,
+     * &lt;svg&gt;...&lt;/svg&gt;, HTML comments &lt;!-- ... --&gt;, and collapse whitespace.
      */
     static String stripNoise(String html) {
         // Remove whole elements (greedy across lines)
@@ -81,6 +82,9 @@ public class AiExtractionService {
             .replaceAll("(?s)<script[^>]*>.*?</script>", "")
             .replaceAll("(?s)<style[^>]*>.*?</style>", "")
             .replaceAll("(?s)<noscript[^>]*>.*?</noscript>", "")
+            .replaceAll("(?s)<nav[^>]*>.*?</nav>", "")
+            .replaceAll("(?s)<footer[^>]*>.*?</footer>", "")
+            .replaceAll("(?s)<header[^>]*>.*?</header>", "")
             .replaceAll("(?s)<svg[^>]*>.*?</svg>", "")
             .replaceAll("(?s)<path[^>]*>.*?</path>", "")
             // HTML comments
