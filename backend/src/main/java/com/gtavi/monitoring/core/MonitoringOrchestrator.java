@@ -252,6 +252,20 @@ public class MonitoringOrchestrator {
 
                 String offerId = sourceCode + ":" + editionId;
 
+                var params = new java.util.HashMap<String, Object>();
+                params.put("id", offerId);
+                params.put("editionId", editionId);
+                params.put("retailerCode", sourceCode);
+                params.put("platform", platform != null ? platform : "");
+                params.put("country", "CH");
+                params.put("price", priceText != null ? Double.valueOf(priceText) : null);
+                params.put("currency", currency);
+                params.put("url", url != null ? url : "");
+                params.put("availability", availability);
+                params.put("preorder", "PREORDER_AVAILABLE".equals(availability)
+                    || "IN_STOCK".equals(availability)
+                    || "AVAILABLE".equals(availability));
+
                 session.run("""
                     MERGE (o:RetailOffer {id: $id})
                     SET o.editionId = $editionId,
@@ -267,19 +281,7 @@ public class MonitoringOrchestrator {
                         o.lastChangedAt = coalesce(o.lastChangedAt, datetime()),
                         o.createdAt = coalesce(o.createdAt, datetime()),
                         o.updatedAt = datetime()
-                    """, Map.ofEntries(
-                        Map.entry("id", offerId),
-                        Map.entry("editionId", editionId),
-                        Map.entry("retailerCode", sourceCode),
-                        Map.entry("platform", platform != null ? platform : ""),
-                        Map.entry("country", "CH"),
-                        Map.entry("price", priceText != null ? Double.parseDouble(priceText) : null),
-                        Map.entry("currency", currency),
-                        Map.entry("url", url != null ? url : ""),
-                        Map.entry("availability", availability),
-                        Map.entry("preorder", "PREORDER_AVAILABLE".equals(availability)
-                            || "IN_STOCK".equals(availability))
-                    ));
+                    """, params);
             }
         }
         Log.debugf("Persisted %d offers for retailer %s",
