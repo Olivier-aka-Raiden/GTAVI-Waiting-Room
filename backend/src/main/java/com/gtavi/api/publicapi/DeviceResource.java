@@ -47,11 +47,11 @@ public class DeviceResource {
                     d.platform = $platform,
                     d.locale = $locale,
                     d.appVersion = $appVersion,
-                    d.notificationsEnabled = coalesce(d.notificationsEnabled, true),
+                    d.notificationsEnabled = true,
                     d.active = true,
                     d.lastSeenAt = datetime(),
+                    d.createdAt = coalesce(d.createdAt, datetime()),
                     d.updatedAt = datetime()
-                ON CREATE SET d.createdAt = datetime()
                 """, Map.of(
                     "installationId", installationId,
                     "pushToken", pushToken,
