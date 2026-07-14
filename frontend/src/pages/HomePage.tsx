@@ -146,7 +146,14 @@ export function HomePage() {
     localStorage.setItem('gta-vi-installation-id', id);
     return id;
   });
-  const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_PREFS);
+  const [prefs, setPrefs] = useState<NotificationPreferences>(() => {
+    // Restore from localStorage first for instant render, backend will overwrite
+    try {
+      const cached = localStorage.getItem('gta-vi-prefs');
+      if (cached) return JSON.parse(cached);
+    } catch { /* ignore */ }
+    return DEFAULT_PREFS;
+  });
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   const fetchData = useCallback(() => {
@@ -165,11 +172,12 @@ export function HomePage() {
       .then(backendPrefs => {
         if (!cancelled) {
           setPrefs(backendPrefs);
+          localStorage.setItem('gta-vi-prefs', JSON.stringify(backendPrefs));
           setPrefsLoaded(true);
         }
       })
       .catch(() => {
-        // Backend unreachable or no prefs yet — use defaults (already set)
+        // Backend unreachable — keep localStorage cache (already loaded)
         if (!cancelled) setPrefsLoaded(true);
       });
     return () => { cancelled = true; };
@@ -177,18 +185,24 @@ export function HomePage() {
 
   // ── Persist preferences whenever they change (debounced) ────────────────
   useEffect(() => {
-    if (!prefsLoaded) return; // Don't persist the initial default before backend load
+    if (!prefsLoaded) return;
+    // Always save to localStorage immediately (instant local cache)
+    localStorage.setItem('gta-vi-prefs', JSON.stringify(prefs));
+    // Debounce backend persist
     const timer = setTimeout(() => {
       updatePreferences(installationId, prefs).catch(() => {
-        // Silently ignore — prefs are still usable locally
+        // Backend unreachable — prefs are still in localStorage
       });
     }, 500);
     return () => clearTimeout(timer);
   }, [prefs, installationId, prefsLoaded]);
 
   const handleNotificationEnabled = useCallback((_token: string) => {
-    // installationId is already persisted in localStorage (see useState above)
-    // notifications-enabled flag is set by PushPermissionCard
+    // installationId and notifications-enabled flag are persisted by PushPermissionCard
+  }, []);
+
+  const handleNotificationDisabled = useCallback(() => {
+    // User clicked "Disable" — preferences stay, just push token is deactivated
   }, []);
 
   const handlePrefChange = useCallback((update: Partial<NotificationPreferences>) => {
@@ -226,6 +240,7 @@ export function HomePage() {
           <PushPermissionCard
             installationId={installationId}
             onEnabled={handleNotificationEnabled}
+            onDisabled={handleNotificationDisabled}
           />
           <NotificationSettings
             preferences={prefs}

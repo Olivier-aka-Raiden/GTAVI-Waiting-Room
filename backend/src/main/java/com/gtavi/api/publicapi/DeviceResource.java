@@ -170,9 +170,34 @@ public class DeviceResource {
     public Response updatePreferences(@PathParam("installationId") String installationId,
                                        Map<String, Object> body) {
         try (var session = driver.session()) {
+            // Ensure the DeviceInstallation exists (user may save prefs before enabling push)
             session.run("""
-                MATCH (d:DeviceInstallation {installationId: $id})-[:HAS_PREFERENCES]->(np:NotificationPreference)
-                SET np.collectorEditionAnnouncement = coalesce($collectorAnnounce, np.collectorEditionAnnouncement),
+                MERGE (d:DeviceInstallation {installationId: $id})
+                ON CREATE SET d.platform = 'UNKNOWN',
+                    d.notificationsEnabled = false,
+                    d.active = true,
+                    d.lastSeenAt = datetime(),
+                    d.createdAt = datetime(),
+                    d.updatedAt = datetime()
+                ON MATCH SET d.lastSeenAt = datetime(), d.updatedAt = datetime()
+                """, Map.of("id", installationId));
+
+            session.run("""
+                MERGE (d:DeviceInstallation {installationId: $id})
+                MERGE (d)-[:HAS_PREFERENCES]->(np:NotificationPreference)
+                ON CREATE SET
+                    np.collectorEditionAnnouncement = coalesce($collectorAnnounce, true),
+                    np.collectorEditionPreorder = coalesce($collectorPreorder, true),
+                    np.releaseDateChanges = coalesce($releaseDate, true),
+                    np.newOfficialTrailers = coalesce($trailers, true),
+                    np.majorRockstarNews = coalesce($majorNews, true),
+                    np.generalNews = coalesce($generalNews, false),
+                    np.priceChanges = coalesce($priceChanges, false),
+                    np.outOfStock = coalesce($outOfStock, false),
+                    np.backInStock = coalesce($backInStock, true),
+                    np.updatedAt = datetime()
+                ON MATCH SET
+                    np.collectorEditionAnnouncement = coalesce($collectorAnnounce, np.collectorEditionAnnouncement),
                     np.collectorEditionPreorder = coalesce($collectorPreorder, np.collectorEditionPreorder),
                     np.releaseDateChanges = coalesce($releaseDate, np.releaseDateChanges),
                     np.newOfficialTrailers = coalesce($trailers, np.newOfficialTrailers),

@@ -1,88 +1,68 @@
 package com.gtavi.monitoring.core;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 /**
- * Uses LangChain4j + LLM to extract structured GTA VI data from raw HTML.
- * This replaces brittle CSS selectors — the AI adapts to any site redesign.
+ * Facade that delegates HTML extraction to the appropriate typed LangChain4j AiService.
+ * Each extractor returns a strongly-typed DTO — no manual JSON parsing needed.
  */
 @ApplicationScoped
 public class AiExtractionService {
 
-    @Inject
-    ExtractionAgent agent;
+    @Inject RockstarMainExtractor rockstarMain;
+    @Inject RockstarEditionsExtractor rockstarEditions;
+    @Inject RockstarMediaExtractor rockstarMedia;
+    @Inject RetailerProductsExtractor retailerProducts;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
     /**
      * Extract structured GTA VI data from HTML.
+     * Returns a Jackson JsonNode for backward compatibility with DiffEngine and MonitoringOrchestrator.
      */
     public JsonNode extractFromHtml(String html, String sourceType) {
-        String prompt = buildExtractionPrompt(sourceType);
         String truncatedHtml = truncateHtml(html, 40_000);
 
         try {
-            String response = agent.extract(truncatedHtml, prompt);
-            return parseAndValidate(response, sourceType);
+            return switch (sourceType) {
+                case "rockstar_main" -> {
+                    var data = rockstarMain.extract(truncatedHtml);
+                    yield mapper.convertValue(data, JsonNode.class);
+                }
+                case "rockstar_editions" -> {
+                    var data = rockstarEditions.extract(truncatedHtml);
+                    yield mapper.convertValue(data, JsonNode.class);
+                }
+                case "rockstar_media" -> {
+                    var data = rockstarMedia.extract(truncatedHtml);
+                    yield mapper.convertValue(data, JsonNode.class);
+                }
+                case "retailer" -> {
+                    RetailerProductsData data = retailerProducts.extract(truncatedHtml);
+                    yield mapper.convertValue(data, JsonNode.class);
+                }
+                default -> {
+                    Log.warnf("Unknown source type: %s — no typed extractor available", sourceType);
+                    yield null;
+                }
+            };
         } catch (Exception e) {
-            Log.errorf("AI extraction failed for %s: %s", sourceType, e.getMessage());
+            Log.errorf(e, "AI extraction failed for %s", sourceType);
             return null;
         }
     }
 
-    private String buildExtractionPrompt(String sourceType) {
-        return switch (sourceType) {
-            case "rockstar_main" -> """
-                Extract: releaseDate (YYYY-MM-DD), platforms (array), preorderAvailable (bool), preorderLabel, headlineStatus.
-                Return ONLY valid JSON with no markdown or explanation.
-                """;
-            case "rockstar_editions" -> """
-                Extract: editions array with name, type (STANDARD/DELUXE/ULTIMATE/COLLECTOR/SPECIAL/BUNDLE/UPGRADE/UNKNOWN),
-                description, features array, platforms array, preorderAvailable bool.
-                Also: hasCollectorEdition bool.
-                Return ONLY valid JSON.
-                """;
-            case "rockstar_media" -> """
-                Extract: videos array with title, mediaType (TRAILER/GAMEPLAY/CHARACTER_CLIP/COVER_ART_ANIMATION/OTHER_VIDEO),
-                publicationDate (YYYY-MM-DD), videoUrl, thumbnailUrl.
-                Classify by title keywords: "trailer"→TRAILER, "gameplay"→GAMEPLAY, "cover art"→COVER_ART_ANIMATION.
-                Return ONLY valid JSON.
-                """;
-            case "retailer" -> """
-                Extract a products array from this retailer search results page.
-                Each product: name (string), edition (STANDARD|ULTIMATE|COLLECTOR|DELUXE|UNKNOWN),
-                price (number, in local currency), currency (CHF|EUR|USD), availability
-                (IN_STOCK|OUT_OF_STOCK|PREORDER|COMING_SOON|UNAVAILABLE),
-                url (full product URL), platform (PS5|XSX|PC|UNKNOWN).
-                Include ALL GTA VI products on the page — every one.
-                For edition: use STANDARD if no edition keyword in name, ULTIMATE if "ultimate",
-                COLLECTOR if "collector"/"collector's".
-                Return ONLY valid JSON: {"products": [...]}
-                """;
-            default -> """
-                Extract all GTA VI relevant structured data. Return ONLY valid JSON.
-                """;
-        };
-    }
-
-    private JsonNode parseAndValidate(String response, String sourceType) {
-        String json = response.trim();
-        if (json.startsWith("```")) {
-            json = json.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
-        }
-        try {
-            JsonNode node = mapper.readTree(json);
-            Log.debugf("AI extraction OK for %s", sourceType);
-            return node;
-        } catch (JsonProcessingException e) {
-            Log.errorf("AI response not valid JSON for %s: %.200s", sourceType, response);
-            return null;
-        }
+    /**
+     * Extract retailer products as a typed DTO (for use by MonitoringOrchestrator.persistOffers).
+     */
+    public RetailerProductsData extractRetailerProducts(String html) {
+        String truncatedHtml = truncateHtml(html, 40_000);
+        return retailerProducts.extract(truncatedHtml);
     }
 
     private String truncateHtml(String html, int maxChars) {
