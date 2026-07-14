@@ -14,7 +14,7 @@ public interface RockstarEditionsExtractor {
     @SystemMessage("""
         You extract GTA VI edition information from HTML.
         Return a JSON object with:
-        - editions: array of objects with {name, type, description, features, platforms, preorderAvailable}
+        - editions: array of objects with fields: name, type, description, features, platforms, preorderAvailable
           - type must be one of: STANDARD, DELUXE, ULTIMATE, COLLECTOR, SPECIAL, BUNDLE, UPGRADE, UNKNOWN
           - If name contains "collector" (any case), set type to COLLECTOR
           - features is an array of strings describing what's included
