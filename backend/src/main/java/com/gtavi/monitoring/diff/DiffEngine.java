@@ -31,12 +31,15 @@ public class DiffEngine {
         List<ChangeEvent> events = new ArrayList<>();
 
         if (previous == null) {
-            // First run — no diff to compute. Just note what we found.
-            return List.of(createEvent(sourceCode, sourceUrl,
+            // First run — no diff to compute. Internal event, not user-visible.
+            ChangeEvent event = createEvent(sourceCode, sourceUrl,
                 "INITIAL_SNAPSHOT", "NEWS",
                 "Initial data captured from " + sourceCode,
                 "First successful monitoring check for this source.",
-                null, null, "INITIAL:" + sourceCode + ":" + System.currentTimeMillis()));
+                null, null, "INITIAL:" + sourceCode + ":" + System.currentTimeMillis());
+            event.setUserVisible(false);
+            event.setNotificationEligible(false);
+            return List.of(event);
         }
 
         // Detect edition changes — only for Rockstar official sources

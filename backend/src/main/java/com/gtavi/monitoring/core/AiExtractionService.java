@@ -53,6 +53,17 @@ public class AiExtractionService {
                 Classify by title keywords: "trailer"→TRAILER, "gameplay"→GAMEPLAY, "cover art"→COVER_ART_ANIMATION.
                 Return ONLY valid JSON.
                 """;
+            case "retailer" -> """
+                Extract a products array from this retailer search results page.
+                Each product: name (string), edition (STANDARD|ULTIMATE|COLLECTOR|DELUXE|UNKNOWN),
+                price (number, in local currency), currency (CHF|EUR|USD), availability
+                (IN_STOCK|OUT_OF_STOCK|PREORDER|COMING_SOON|UNAVAILABLE),
+                url (full product URL), platform (PS5|XSX|PC|UNKNOWN).
+                Include ALL GTA VI products on the page — every one.
+                For edition: use STANDARD if no edition keyword in name, ULTIMATE if "ultimate",
+                COLLECTOR if "collector"/"collector's".
+                Return ONLY valid JSON: {"products": [...]}
+                """;
             default -> """
                 Extract all GTA VI relevant structured data. Return ONLY valid JSON.
                 """;

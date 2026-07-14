@@ -227,7 +227,12 @@ public class MonitoringOrchestrator {
                 String productName = p.has("name") ? p.get("name").asText() : null;
                 if (productName == null) continue;
 
-                String editionId = matchEdition(productName, knownEditionIds);
+                // Use AI-extracted edition type as hint, fall back to name matching
+                String aiEdition = p.has("edition") ? p.get("edition").asText().toLowerCase() : null;
+                String editionId = aiEdition != null ? matchEdition(aiEdition, knownEditionIds) : null;
+                if (editionId == null) {
+                    editionId = matchEdition(productName, knownEditionIds);
+                }
                 if (editionId == null) {
                     Log.debugf("Could not match product '%s' to any known edition", productName);
                     continue;
@@ -236,6 +241,12 @@ public class MonitoringOrchestrator {
                 String url = p.has("url") ? p.get("url").asText() : null;
                 String platform = p.has("platform") ? p.get("platform").asText() : null;
                 String availability = p.has("availability") ? p.get("availability").asText() : "UNKNOWN";
+                // Normalize AI availability values to our internal states
+                availability = switch (availability.toUpperCase()) {
+                    case "PREORDER" -> "PREORDER_AVAILABLE";
+                    case "IN_STOCK" -> "AVAILABLE";
+                    default -> availability.toUpperCase();
+                };
                 String priceText = p.has("price") ? p.get("price").asText(null) : null;
                 String currency = p.has("currency") ? p.get("currency").asText("CHF") : "CHF";
 
