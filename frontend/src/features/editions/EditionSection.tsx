@@ -35,7 +35,7 @@ function EditionTypeBadge({ type, official }: { type: string; official: boolean 
 
 export function EditionCard({ edition }: EditionCardProps) {
   return (
-    <div className="bg-bg-card rounded-xl p-4 sm:p-5 card-hover border border-white/5">
+    <div className="glass-card p-4 sm:p-5 card-hover">
       <div className="flex items-start justify-between mb-3">
         <div>
           <h3 className="text-lg font-bold text-text-primary">{edition.name}</h3>
@@ -103,7 +103,7 @@ export function EditionSection({ editions }: EditionSectionProps) {
 
   return (
     <section>
-      <h2 className="text-xl sm:text-2xl font-bold text-accent-gold mb-4">Editions</h2>
+      <h2 className="text-xl sm:text-2xl font-bold text-accent-gold mb-4" style={{ fontFamily: 'var(--font-display)' }}>Editions</h2>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {editions.map(edition => (
@@ -117,7 +117,7 @@ export function EditionSection({ editions }: EditionSectionProps) {
           <div className="flex items-start gap-3">
             <span className="text-2xl">🔔</span>
             <div>
-              <h3 className="text-lg font-bold text-accent-gold">Collector's Edition</h3>
+              <h3 className="text-lg font-bold text-accent-gold" style={{ fontFamily: 'var(--font-display)' }}>Collector's Edition</h3>
               <p className="text-sm text-text-muted mt-1">Not announced yet</p>
               <p className="text-sm text-text-muted mt-2">
                 You'll be notified when Rockstar announces it or pre-orders open.
