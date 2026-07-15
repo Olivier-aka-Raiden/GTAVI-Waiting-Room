@@ -8,7 +8,6 @@ import { Countdown } from '../features/countdown/Countdown';
 import { TrailerCarousel } from '../features/trailers/TrailerCarousel';
 import { EditionSection } from '../features/editions/EditionSection';
 import { EventTimeline } from '../features/events/EventTimeline';
-import { SystemHealth } from '../features/system/SystemHealth';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import type { NotificationPreferences } from '../api/devices';
 
@@ -176,22 +175,35 @@ const TABS = [
   { id: 'trailers', label: 'Trailers', emoji: '🎬' },
   { id: 'editions', label: 'Editions', emoji: '📦' },
   { id: 'updates', label: 'Updates', emoji: '📰' },
-  { id: 'system', label: 'Status', emoji: '📡' },
   { id: 'alerts', label: 'Alerts', emoji: '🔔' },
 ] as const;
 
-function StickyBar({ notificationActive, activeTab, onTabClick }: {
+function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
   notificationActive: boolean;
   activeTab: string;
   onTabClick: (id: string) => void;
+  lastCheck: string | null;
 }) {
   const [visible, setVisible] = useState(false);
+  const [minutesAgo, setMinutesAgo] = useState<number | null>(null);
 
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > 300);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  // Update "X min ago" every 30s
+  useEffect(() => {
+    const update = () => {
+      if (lastCheck) {
+        setMinutesAgo(Math.floor((Date.now() - new Date(lastCheck).getTime()) / 60000));
+      }
+    };
+    update();
+    const interval = setInterval(update, 30000);
+    return () => clearInterval(interval);
+  }, [lastCheck]);
 
   return (
     <div
@@ -208,12 +220,21 @@ function StickyBar({ notificationActive, activeTab, onTabClick }: {
               WAITING ROOM
             </span>
           </div>
-          {notificationActive && (
-            <span className="flex items-center gap-1.5 text-xs text-accent-teal">
-              <span className="w-2 h-2 rounded-full bg-accent-teal animate-pulse" />
-              Live
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {/* Monitoring status */}
+            {minutesAgo != null && (
+              <span className="flex items-center gap-1.5 text-xs text-text-muted">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-teal" />
+                {minutesAgo < 1 ? 'just now' : `${minutesAgo}m ago`}
+              </span>
+            )}
+            {notificationActive && (
+              <span className="flex items-center gap-1.5 text-xs text-accent-teal">
+                <span className="w-2 h-2 rounded-full bg-accent-teal animate-pulse" />
+                Live
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -364,6 +385,7 @@ export function HomePage() {
         notificationActive={notificationActive}
         activeTab={activeTab}
         onTabClick={scrollToSection}
+        lastCheck={data.systemStatus.lastMonitoringRunAt}
       />
 
       <div className="relative max-w-2xl mx-auto px-4 pb-16">
@@ -392,14 +414,6 @@ export function HomePage() {
           <div id="section-updates">
             <Section>
               <EventTimeline events={data.latestEvents} />
-            </Section>
-          </div>
-          <Divider />
-
-          {/* System Health */}
-          <div id="section-system">
-            <Section>
-              <SystemHealth status={data.systemStatus} />
             </Section>
           </div>
           <Divider />
