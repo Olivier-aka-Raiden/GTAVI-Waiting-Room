@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import confetti from 'canvas-confetti';
 
 interface CountdownSegmentProps {
   value: number;
@@ -53,6 +54,36 @@ interface CountdownProps {
 }
 
 export function Countdown({ days, hours, minutes, seconds, isReleased }: CountdownProps) {
+  const confettiFired = useRef(false);
+
+  // Fire confetti once on release
+  useEffect(() => {
+    if (isReleased && !confettiFired.current) {
+      confettiFired.current = true;
+      const duration = 4000;
+      const end = Date.now() + duration;
+      const colors = ['#FFB2C6', '#FFF9CB', '#E6FFA3', '#FFD4A8', '#4B2F54'];
+
+      (function frame() {
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.7 },
+          colors,
+        });
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.7 },
+          colors,
+        });
+        if (Date.now() < end) requestAnimationFrame(frame);
+      })();
+    }
+  }, [isReleased]);
+
   if (isReleased) {
     return (
       <div className="text-center py-8">

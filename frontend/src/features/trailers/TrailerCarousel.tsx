@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { Trailer } from '../../types/game';
 
 /** Extract YouTube video ID from URL like https://www.youtube.com/watch?v=QdBZY2fkU-0 */
@@ -18,6 +18,8 @@ interface Props {
 
 export function TrailerCarousel({ trailers, latestTrailer }: Props) {
   const [active, setActive] = useState(0);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
 
   // Put the latest trailer first if available
   const ordered = latestTrailer && trailers.length > 0
@@ -41,6 +43,22 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
   const goNext = () => setActive(a => (a === ordered.length - 1 ? 0 : a + 1));
   const goTo = (i: number) => setActive(i);
 
+  // Touch swipe handlers
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    const dy = e.changedTouches[0].clientY - touchStartY.current;
+    // Only trigger if horizontal swipe dominates (more horizontal than vertical)
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      if (dx > 0) goPrev();
+      else goNext();
+    }
+  }, []);
+
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
@@ -53,7 +71,11 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
       </div>
 
       {/* Video player */}
-      <div className="relative rounded-xl overflow-hidden bg-black">
+      <div
+        className="relative rounded-xl overflow-hidden bg-black"
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
         <div className="aspect-video">
           {videoId ? (
             <iframe
