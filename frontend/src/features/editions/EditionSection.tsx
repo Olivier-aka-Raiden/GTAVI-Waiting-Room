@@ -14,21 +14,30 @@ function StatusBadge({ status }: { status: string }) {
     DISCONTINUED: 'bg-red-500/20 text-red-400',
   };
 
+  const label: Record<string, string> = {
+    PREORDER_AVAILABLE: 'Preorder',
+    AVAILABLE: 'Available',
+    ANNOUNCED: 'Announced',
+    NOT_ANNOUNCED: 'TBA',
+    OUT_OF_STOCK: 'Sold out',
+    DISCONTINUED: 'Discontinued',
+  };
+
   return (
-    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${colors[status] || 'bg-text-muted/20 text-text-muted'}`}>
-      {status.replace(/_/g, ' ')}
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${colors[status] || 'bg-text-muted/20 text-text-muted'}`}>
+      {label[status] || status.replace(/_/g, ' ')}
     </span>
   );
 }
 
 function EditionTypeBadge({ type, official }: { type: string; official: boolean }) {
   return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+    <span className={`text-xs font-medium px-2 py-0.5 rounded whitespace-nowrap ${
       official
         ? 'bg-accent-purple/30 text-accent-pink'
         : 'bg-text-muted/20 text-text-muted'
     }`}>
-      {official ? 'OFFICIAL' : 'UNOFFICIAL'} · {type}
+      {type}
     </span>
   );
 }
@@ -87,13 +96,13 @@ export function EditionCard({ edition }: EditionCardProps) {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {offer.price != null && (
-                      <span className="text-sm font-medium text-accent-teal">
+                      <span className="text-sm font-medium text-accent-teal whitespace-nowrap">
                         {offer.currency === 'CHF' ? 'CHF' : offer.currency} {offer.price.toFixed(2)}
                       </span>
                     )}
                     {offer.preorderAvailable && (
-                      <span className="text-xs bg-accent-teal/20 text-accent-teal px-1.5 py-0.5 rounded">
-                        PRE-ORDER
+                      <span className="text-xs bg-accent-teal/20 text-accent-teal px-1.5 py-0.5 rounded whitespace-nowrap">
+                        Preorder
                       </span>
                     )}
                   </div>

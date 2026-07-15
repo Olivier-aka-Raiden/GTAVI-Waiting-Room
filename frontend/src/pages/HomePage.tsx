@@ -182,7 +182,7 @@ function StickyHeader({ notificationActive }: { notificationActive: boolean }) {
 
   return (
     <header
-      className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
+      className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 pt-[env(safe-area-inset-top,0px)] ${
         visible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
       }`}
     >
@@ -219,13 +219,13 @@ const TABS = [
 
 function TabNav({ activeTab, onTabClick }: { activeTab: string; onTabClick: (id: string) => void }) {
   return (
-    <div className="sticky top-0 z-40 pt-3 pb-2 -mx-4 px-4" style={{ background: 'linear-gradient(to bottom, #111117 60%, transparent)' }}>
+    <div className="sticky top-0 z-40 pt-[env(safe-area-inset-top,0px)] pt-3 pb-2 -mx-4 px-4" style={{ background: 'linear-gradient(to bottom, #111117 60%, transparent)' }}>
       <div className="glass-card !rounded-full px-1 py-1 flex">
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => onTabClick(tab.id)}
-            className={`flex-1 text-xs font-semibold py-2 rounded-full transition-all duration-200 ${
+            className={`flex-1 text-xs font-semibold py-2 rounded-full transition-all duration-200 whitespace-nowrap ${
               activeTab === tab.id
                 ? 'bg-accent-pink/20 text-accent-pink'
                 : 'text-text-muted hover:text-text-primary'
@@ -321,6 +321,30 @@ export function HomePage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Update active tab based on scroll position ──────────────────────────
+  useEffect(() => {
+    const sectionIds = TABS.map(t => `section-${t.id}`);
+    const elements = sectionIds.map(id => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the first section that's substantially visible
+        const visible = entries
+          .filter(e => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+
+        if (visible.length > 0) {
+          const id = visible[0].target.id.replace('section-', '');
+          setActiveTab(id);
+        }
+      },
+      { threshold: 0.3, rootMargin: '-80px 0px -50% 0px' }
+    );
+
+    elements.forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, [data]);
 
   if (loading) return <LoadingSkeleton />;
   if (error) return <ErrorState message={error} onRetry={fetchData} />;
