@@ -9,8 +9,7 @@ import { TrailerCarousel } from '../features/trailers/TrailerCarousel';
 import { EditionSection } from '../features/editions/EditionSection';
 import { EventTimeline } from '../features/events/EventTimeline';
 import { SystemHealth } from '../features/system/SystemHealth';
-import { PushPermissionCard } from '../features/notifications/PushPermissionCard';
-import { NotificationSettings } from '../features/notifications/NotificationSettings';
+import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import type { NotificationPreferences } from '../api/devices';
 
 // ── Default preferences (used as initial state while loading) ──────────────
@@ -381,15 +380,13 @@ export function HomePage() {
 
           {/* Notifications */}
           <div id="section-alerts">
-            <Section className="space-y-4">
-              <PushPermissionCard
+            <Section>
+              <NotificationPanel
                 installationId={installationId}
-                onEnabled={handleNotificationEnabled}
-                onDisabled={handleNotificationDisabled}
-              />
-              <NotificationSettings
                 preferences={prefs}
-                onChange={handlePrefChange}
+                onPreferencesChange={handlePrefChange}
+                onNotificationEnabled={handleNotificationEnabled}
+                onNotificationDisabled={handleNotificationDisabled}
               />
             </Section>
           </div>
