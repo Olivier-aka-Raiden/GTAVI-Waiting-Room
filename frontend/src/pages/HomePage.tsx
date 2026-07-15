@@ -220,12 +220,12 @@ const TABS = [
 function TabNav({ activeTab, onTabClick }: { activeTab: string; onTabClick: (id: string) => void }) {
   return (
     <div className="sticky top-0 z-40 pt-[env(safe-area-inset-top,0px)] pt-3 pb-2 -mx-4 px-4" style={{ background: 'linear-gradient(to bottom, #111117 60%, transparent)' }}>
-      <div className="glass-card !rounded-full px-1 py-1 flex">
+      <div className="glass-card !rounded-full px-1 py-1 flex sm:overflow-visible overflow-x-auto scrollbar-none">
         {TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => onTabClick(tab.id)}
-            className={`flex-1 text-xs font-semibold py-2 rounded-full transition-all duration-200 whitespace-nowrap ${
+            className={`flex-shrink-0 sm:flex-1 text-xs font-semibold px-3 sm:px-0 py-2 rounded-full transition-all duration-200 whitespace-nowrap ${
               activeTab === tab.id
                 ? 'bg-accent-pink/20 text-accent-pink'
                 : 'text-text-muted hover:text-text-primary'
