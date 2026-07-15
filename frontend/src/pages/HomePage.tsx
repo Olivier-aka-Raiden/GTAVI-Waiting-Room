@@ -169,9 +169,22 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-// ── Sticky header ──────────────────────────────────────────────────────────
+// ── Combined sticky bar (header + tabs) ───────────────────────────────────
 
-function StickyHeader({ notificationActive }: { notificationActive: boolean }) {
+const TABS = [
+  { id: 'countdown', label: 'Countdown', emoji: '⌛' },
+  { id: 'trailers', label: 'Trailers', emoji: '🎬' },
+  { id: 'editions', label: 'Editions', emoji: '📦' },
+  { id: 'updates', label: 'Updates', emoji: '📰' },
+  { id: 'system', label: 'Status', emoji: '📡' },
+  { id: 'alerts', label: 'Alerts', emoji: '🔔' },
+] as const;
+
+function StickyBar({ notificationActive, activeTab, onTabClick }: {
+  notificationActive: boolean;
+  activeTab: string;
+  onTabClick: (id: string) => void;
+}) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -181,13 +194,14 @@ function StickyHeader({ notificationActive }: { notificationActive: boolean }) {
   }, []);
 
   return (
-    <header
+    <div
       className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 pt-[env(safe-area-inset-top,0px)] ${
         visible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
       }`}
     >
+      {/* Header row */}
       <div className="glass-card rounded-none border-t-0 border-x-0 border-b border-white/5">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-2xl mx-auto px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src="/assets/logo-vi.png" alt="" className="h-5 object-contain" />
             <span className="text-sm font-semibold text-text-primary" style={{ fontFamily: 'var(--font-display)' }}>
@@ -202,39 +216,25 @@ function StickyHeader({ notificationActive }: { notificationActive: boolean }) {
           )}
         </div>
       </div>
-    </header>
-  );
-}
 
-// ── Tab navigation ─────────────────────────────────────────────────────────
-
-const TABS = [
-  { id: 'countdown', label: 'Countdown', emoji: '⌛' },
-  { id: 'trailers', label: 'Trailers', emoji: '🎬' },
-  { id: 'editions', label: 'Editions', emoji: '📦' },
-  { id: 'updates', label: 'Updates', emoji: '📰' },
-  { id: 'system', label: 'Status', emoji: '📡' },
-  { id: 'alerts', label: 'Alerts', emoji: '🔔' },
-] as const;
-
-function TabNav({ activeTab, onTabClick }: { activeTab: string; onTabClick: (id: string) => void }) {
-  return (
-    <div className="sticky top-0 z-40 pt-[env(safe-area-inset-top,0px)] pt-3 pb-2 -mx-4 px-4" style={{ background: 'linear-gradient(to bottom, #111117 60%, transparent)' }}>
-      <div className="glass-card !rounded-full px-1 py-1 flex sm:overflow-visible overflow-x-auto scrollbar-none">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => onTabClick(tab.id)}
-            className={`flex-shrink-0 sm:flex-1 text-xs font-semibold px-3 sm:px-0 py-2 rounded-full transition-all duration-200 whitespace-nowrap ${
-              activeTab === tab.id
-                ? 'bg-accent-pink/20 text-accent-pink'
-                : 'text-text-muted hover:text-text-primary'
-            }`}
-          >
-            <span className="hidden sm:inline mr-1">{tab.emoji}</span>
-            {tab.label}
-          </button>
-        ))}
+      {/* Tab row */}
+      <div className="bg-bg-primary/95 backdrop-blur-md border-b border-white/5">
+        <div className="max-w-2xl mx-auto px-4 py-1.5 flex sm:overflow-visible overflow-x-auto scrollbar-none gap-1">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => onTabClick(tab.id)}
+              className={`flex-shrink-0 sm:flex-1 text-xs font-semibold px-3 sm:px-0 py-1.5 rounded-full transition-all duration-200 whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'bg-accent-pink/20 text-accent-pink'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <span className="hidden sm:inline mr-1">{tab.emoji}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -360,14 +360,36 @@ export function HomePage() {
         style={{ backgroundImage: 'url(/assets/hero-poster.jpg)', maskImage: 'linear-gradient(to bottom, black 40%, transparent)' }}
       />
 
-      <StickyHeader notificationActive={notificationActive} />
+      <StickyBar
+        notificationActive={notificationActive}
+        activeTab={activeTab}
+        onTabClick={scrollToSection}
+      />
 
       <div className="relative max-w-2xl mx-auto px-4 pb-16">
         <div id="section-countdown">
           <HeroSection game={data} />
         </div>
 
-        <TabNav activeTab={activeTab} onTabClick={scrollToSection} />
+        {/* Inline tab nav (visible before sticky bar kicks in) */}
+        <div className="sticky top-0 z-40 pt-3 pb-2 -mx-4 px-4 sm:hidden"
+          style={{ background: 'linear-gradient(to bottom, #111117 60%, transparent)' }}>
+          <div className="glass-card !rounded-full px-1 py-1 flex overflow-x-auto scrollbar-none">
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => scrollToSection(tab.id)}
+                className={`flex-shrink-0 text-xs font-semibold px-3 py-2 rounded-full transition-all duration-200 whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-accent-pink/20 text-accent-pink'
+                    : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="space-y-6 mt-6">
           {/* Trailers */}
