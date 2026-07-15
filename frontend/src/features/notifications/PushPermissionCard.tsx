@@ -58,7 +58,7 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
 
   if (state === 'granted') {
     return (
-      <div className="bg-gradient-to-r from-accent-teal/10 to-bg-card rounded-xl p-4 border border-accent-teal/20">
+      <div className="glass-card p-4 border border-accent-teal/20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="text-xl">🔔</span>
@@ -84,11 +84,11 @@ export function PushPermissionCard({ installationId, onEnabled, onDisabled }: Pr
   }
 
   return (
-    <div className="bg-gradient-to-r from-accent-purple/40 to-bg-card rounded-xl p-5 border border-accent-purple/30">
+    <div className="glass-card p-5 border border-accent-purple/30">
       <div className="flex items-start gap-3">
         <span className="text-2xl">🔔</span>
         <div className="flex-1">
-          <h3 className="text-base font-bold text-accent-gold">
+          <h3 className="text-base font-bold text-accent-gold" style={{ fontFamily: 'var(--font-display)' }}>
             Get notified instantly
           </h3>
           <p className="text-sm text-text-muted mt-1">

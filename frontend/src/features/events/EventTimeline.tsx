@@ -26,7 +26,7 @@ function EventCard({ event }: EventCardProps) {
   const borderColor = priorityColors[event.priority] || 'border-l-text-muted';
 
   return (
-    <div className={`bg-bg-card rounded-lg p-3 sm:p-4 border-l-4 ${borderColor}`}>
+    <div className={`glass-card p-3 sm:p-4 border-l-4 ${borderColor}`}>
       <div className="flex items-start gap-3">
         <span className="text-lg mt-0.5">{icon}</span>
         <div className="flex-1 min-w-0">
@@ -65,7 +65,7 @@ export function EventTimeline({ events }: EventTimelineProps) {
 
   return (
     <section>
-      <h2 className="text-xl sm:text-2xl font-bold text-accent-gold mb-4">Latest Updates</h2>
+      <h2 className="text-xl sm:text-2xl font-bold text-accent-gold mb-4" style={{ fontFamily: 'var(--font-display)' }}>Latest Updates</h2>
       <div className="space-y-2">
         {events.map(event => (
           <EventCard key={event.id} event={event} />

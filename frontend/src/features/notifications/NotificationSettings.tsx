@@ -55,8 +55,8 @@ const TOGGLES: { key: keyof NotificationPreferences; label: string; description:
 
 export function NotificationSettings({ preferences, onChange }: Props) {
   return (
-    <div className="bg-bg-card rounded-xl p-4 sm:p-5 border border-white/5">
-      <h3 className="text-lg font-bold text-accent-gold mb-4">Notification preferences</h3>
+    <div className="glass-card rounded-xl p-4 sm:p-5">
+      <h3 className="text-lg font-bold text-accent-gold" style={{ fontFamily: 'var(--font-display)' }}>Notification preferences</h3>
       <div className="space-y-3">
         {TOGGLES.map(({ key, label, description }) => (
           <label key={key} className="flex items-start gap-3 cursor-pointer group">

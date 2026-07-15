@@ -3,12 +3,12 @@ import { getGameOverview } from '../api/game';
 import { registerDevice, getPreferences, updatePreferences } from '../api/devices';
 import type { GameOverview } from '../types/game';
 import { useCountdown } from '../hooks/useCountdown';
+import { useScrollReveal } from '../hooks/useScrollReveal';
 import { Countdown } from '../features/countdown/Countdown';
 import { TrailerCarousel } from '../features/trailers/TrailerCarousel';
 import { EditionSection } from '../features/editions/EditionSection';
 import { EventTimeline } from '../features/events/EventTimeline';
-import { PushPermissionCard } from '../features/notifications/PushPermissionCard';
-import { NotificationSettings } from '../features/notifications/NotificationSettings';
+import { NotificationPanel } from '../features/notifications/NotificationPanel';
 import type { NotificationPreferences } from '../api/devices';
 
 // ── Default preferences (used as initial state while loading) ──────────────
@@ -49,22 +49,22 @@ function VerificationBadge({ lastCheck, healthy }: { lastCheck: string | null; h
 
 function HeroSection({ game }: { game: GameOverview }) {
   return (
-    <div className="relative text-center py-6 sm:py-10">
+    <div className="relative text-center py-8 sm:py-14">
       {/* Logo */}
-      <div className="mb-4">
+      <div className="mb-6">
         <img
           src="/assets/logo-gta.png"
           alt="Grand Theft Auto"
-          className="h-10 sm:h-14 mx-auto mb-1 object-contain"
+          className="h-12 sm:h-16 mx-auto mb-1 object-contain drop-shadow-lg"
         />
         <img
           src="/assets/logo-vi.png"
           alt="VI"
-          className="h-8 sm:h-10 mx-auto object-contain"
+          className="h-10 sm:h-14 mx-auto object-contain drop-shadow-lg"
         />
       </div>
 
-      <h2 className="text-accent-gold text-sm sm:text-base uppercase tracking-[0.2em] mb-6">
+      <h2 className="text-accent-gold text-sm sm:text-base uppercase tracking-[0.25em] mb-6 font-medium" style={{ fontFamily: 'var(--font-display)' }}>
         Releases in
       </h2>
 
@@ -72,23 +72,40 @@ function HeroSection({ game }: { game: GameOverview }) {
       <CountdownWrapper releaseDate={game.release.date} />
 
       {/* Release date */}
-      <p className="text-lg sm:text-xl text-text-primary font-semibold mt-4">
+      <p className="text-lg sm:text-xl text-text-primary font-semibold mt-5" style={{ fontFamily: 'var(--font-display)' }}>
         {new Date(game.release.date + 'T00:00:00').toLocaleDateString('en-US', {
           weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
         })}
       </p>
 
       {/* Platforms */}
-      <p className="text-sm text-text-muted mt-2">
+      <p className="text-sm text-text-muted/80 mt-2 font-medium">
         PlayStation 5 · Xbox Series X|S
       </p>
 
       {/* Verification */}
-      <div className="mt-3">
+      <div className="mt-4 flex items-center justify-center gap-4">
         <VerificationBadge
           lastCheck={game.release.lastSuccessfulCheckAt}
           healthy={game.systemStatus.monitoringHealthy}
         />
+        <button
+          onClick={() => {
+            const text = `GTA VI releases on ${new Date(game.release.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} — track the countdown with me!`;
+            const url = window.location.href;
+            if (navigator.share) {
+              navigator.share({ title: 'GTA VI Waiting Room', text, url }).catch(() => {});
+            } else {
+              navigator.clipboard.writeText(`${text} ${url}`).catch(() => {});
+            }
+          }}
+          className="text-xs text-text-muted hover:text-accent-pink transition-colors flex items-center gap-1"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+          </svg>
+          Share
+        </button>
       </div>
     </div>
   );
@@ -99,10 +116,28 @@ function CountdownWrapper({ releaseDate }: { releaseDate: string }) {
   return <Countdown days={days} hours={hours} minutes={minutes} seconds={seconds} isReleased={isReleased} />;
 }
 
+// ── Section wrapper with reveal animation ──────────────────────────────────
+
+function Section({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const ref = useScrollReveal();
+  return (
+    <section ref={ref} className={`reveal ${className}`}>
+      {children}
+    </section>
+  );
+}
+
+function Divider() {
+  return <hr className="section-divider" />;
+}
+
+// ── Loading & Error states ─────────────────────────────────────────────────
+
 function LoadingSkeleton() {
   return (
     <div className="min-h-screen bg-bg-primary animate-pulse">
-      <div className="max-w-2xl mx-auto px-4 py-10">
+      <div className="hero-bg" />
+      <div className="relative max-w-2xl mx-auto px-4 py-10">
         <div className="h-14 w-48 bg-bg-card rounded mx-auto mb-2" />
         <div className="h-10 w-32 bg-bg-card rounded mx-auto mb-6" />
         <div className="flex justify-center gap-2 mb-4">
@@ -133,12 +168,109 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
+// ── Combined sticky bar (header + tabs) ───────────────────────────────────
+
+const TABS = [
+  { id: 'countdown', label: 'Countdown', emoji: '⌛' },
+  { id: 'trailers', label: 'Trailers', emoji: '🎬' },
+  { id: 'editions', label: 'Editions', emoji: '📦' },
+  { id: 'updates', label: 'Updates', emoji: '📰' },
+  { id: 'alerts', label: 'Alerts', emoji: '🔔' },
+] as const;
+
+function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
+  notificationActive: boolean;
+  activeTab: string;
+  onTabClick: (id: string) => void;
+  lastCheck: string | null;
+}) {
+  const [visible, setVisible] = useState(false);
+  const [minutesAgo, setMinutesAgo] = useState<number | null>(null);
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 300);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Update "X min ago" every 30s
+  useEffect(() => {
+    const update = () => {
+      if (lastCheck) {
+        setMinutesAgo(Math.floor((Date.now() - new Date(lastCheck).getTime()) / 60000));
+      }
+    };
+    update();
+    const interval = setInterval(update, 30000);
+    return () => clearInterval(interval);
+  }, [lastCheck]);
+
+  return (
+    <div
+      className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 pt-[env(safe-area-inset-top,0px)] ${
+        visible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
+      }`}
+    >
+      {/* Header row */}
+      <div className="glass-card rounded-none border-t-0 border-x-0 border-b border-white/5">
+        <div className="max-w-2xl mx-auto px-4 py-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <img src="/assets/logo-vi.png" alt="" className="h-5 object-contain" />
+            <span className="text-sm font-semibold text-text-primary" style={{ fontFamily: 'var(--font-display)' }}>
+              WAITING ROOM
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Monitoring status */}
+            {minutesAgo != null && (
+              <span className="flex items-center gap-1.5 text-xs text-text-muted">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-teal" />
+                {minutesAgo < 1 ? 'just now' : `${minutesAgo}m ago`}
+              </span>
+            )}
+            {notificationActive && (
+              <span className="flex items-center gap-1.5 text-xs text-accent-teal">
+                <span className="w-2 h-2 rounded-full bg-accent-teal animate-pulse" />
+                Live
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Tab row */}
+      <div className="bg-bg-primary/95 backdrop-blur-md border-b border-white/5">
+        <div className="max-w-2xl mx-auto px-4 py-1.5 flex sm:overflow-visible overflow-x-auto scrollbar-none gap-1">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => onTabClick(tab.id)}
+              className={`flex-shrink-0 sm:flex-1 text-xs font-semibold px-3 sm:px-0 py-1.5 rounded-full transition-all duration-200 whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'bg-accent-pink/20 text-accent-pink'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              <span className="hidden sm:inline mr-1">{tab.emoji}</span>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export function HomePage() {
   const [data, setData] = useState<GameOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('countdown');
+  const [notificationActive, setNotificationActive] = useState(
+    () => localStorage.getItem('gta-vi-notifications-enabled') === 'true'
+  );
   const [installationId] = useState(() => {
     const stored = localStorage.getItem('gta-vi-installation-id');
     if (stored) return stored;
@@ -147,7 +279,6 @@ export function HomePage() {
     return id;
   });
   const [prefs, setPrefs] = useState<NotificationPreferences>(() => {
-    // Restore from localStorage first for instant render, backend will overwrite
     try {
       const cached = localStorage.getItem('gta-vi-prefs');
       if (cached) return JSON.parse(cached);
@@ -165,7 +296,6 @@ export function HomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Load preferences from backend on mount ──────────────────────────────
   useEffect(() => {
     let cancelled = false;
     getPreferences(installationId)
@@ -177,32 +307,34 @@ export function HomePage() {
         }
       })
       .catch(() => {
-        // Backend unreachable — keep localStorage cache (already loaded)
         if (!cancelled) setPrefsLoaded(true);
       });
     return () => { cancelled = true; };
   }, [installationId]);
 
-  // ── Persist preferences whenever they change (debounced) ────────────────
   useEffect(() => {
     if (!prefsLoaded) return;
-    // Always save to localStorage immediately (instant local cache)
     localStorage.setItem('gta-vi-prefs', JSON.stringify(prefs));
-    // Debounce backend persist
     const timer = setTimeout(() => {
-      updatePreferences(installationId, prefs).catch(() => {
-        // Backend unreachable — prefs are still in localStorage
-      });
+      updatePreferences(installationId, prefs).catch(() => {});
     }, 500);
     return () => clearTimeout(timer);
   }, [prefs, installationId, prefsLoaded]);
 
+  const scrollToSection = (id: string) => {
+    setActiveTab(id);
+    const el = document.getElementById(`section-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const handleNotificationEnabled = useCallback((_token: string) => {
-    // installationId and notifications-enabled flag are persisted by PushPermissionCard
+    setNotificationActive(true);
   }, []);
 
   const handleNotificationDisabled = useCallback(() => {
-    // User clicked "Disable" — preferences stay, just push token is deactivated
+    setNotificationActive(false);
   }, []);
 
   const handlePrefChange = useCallback((update: Partial<NotificationPreferences>) => {
@@ -211,46 +343,98 @@ export function HomePage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // ── Update active tab based on scroll position ──────────────────────────
+  useEffect(() => {
+    const sectionIds = TABS.map(t => `section-${t.id}`);
+    const elements = sectionIds.map(id => document.getElementById(id)).filter(Boolean) as HTMLElement[];
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the first section that's substantially visible
+        const visible = entries
+          .filter(e => e.isIntersecting)
+          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+
+        if (visible.length > 0) {
+          const id = visible[0].target.id.replace('section-', '');
+          setActiveTab(id);
+        }
+      },
+      { threshold: 0.3, rootMargin: '-80px 0px -50% 0px' }
+    );
+
+    elements.forEach(el => observer.observe(el));
+    return () => observer.disconnect();
+  }, [data]);
+
   if (loading) return <LoadingSkeleton />;
   if (error) return <ErrorState message={error} onRetry={fetchData} />;
   if (!data) return null;
 
   return (
     <div className="min-h-screen bg-bg-primary">
-      {/* Hero background */}
+      {/* Animated gradient hero background */}
+      <div className="hero-bg" />
+      {/* Hero poster image overlay */}
       <div
-        className="absolute inset-x-0 top-0 h-[60vh] bg-cover bg-center opacity-20 pointer-events-none"
-        style={{ backgroundImage: 'url(/assets/hero-poster.jpg)' }}
+        className="absolute inset-x-0 top-0 h-[70vh] bg-cover bg-top opacity-12 pointer-events-none"
+        style={{ backgroundImage: 'url(/assets/hero-poster.jpg)', maskImage: 'linear-gradient(to bottom, black 40%, transparent)' }}
+      />
+
+      <StickyBar
+        notificationActive={notificationActive}
+        activeTab={activeTab}
+        onTabClick={scrollToSection}
+        lastCheck={data.systemStatus.lastMonitoringRunAt}
       />
 
       <div className="relative max-w-2xl mx-auto px-4 pb-16">
-        <HeroSection game={data} />
+        <div id="section-countdown">
+          <HeroSection game={data} />
+        </div>
 
-        <div className="space-y-8">
+        <div className="space-y-6 mt-6">
           {/* Trailers */}
-          <TrailerCarousel trailers={data.trailers} latestTrailer={data.latestTrailer} />
+          <div id="section-trailers">
+            <Section>
+              <TrailerCarousel trailers={data.trailers} latestTrailer={data.latestTrailer} />
+            </Section>
+          </div>
+          <Divider />
 
           {/* Editions */}
-          <EditionSection editions={data.editions} />
+          <div id="section-editions">
+            <Section>
+              <EditionSection editions={data.editions} />
+            </Section>
+          </div>
+          <Divider />
 
           {/* Events */}
-          <EventTimeline events={data.latestEvents} />
+          <div id="section-updates">
+            <Section>
+              <EventTimeline events={data.latestEvents} />
+            </Section>
+          </div>
+          <Divider />
 
           {/* Notifications */}
-          <PushPermissionCard
-            installationId={installationId}
-            onEnabled={handleNotificationEnabled}
-            onDisabled={handleNotificationDisabled}
-          />
-          <NotificationSettings
-            preferences={prefs}
-            onChange={handlePrefChange}
-          />
+          <div id="section-alerts">
+            <Section>
+              <NotificationPanel
+                installationId={installationId}
+                preferences={prefs}
+                onPreferencesChange={handlePrefChange}
+                onNotificationEnabled={handleNotificationEnabled}
+                onNotificationDisabled={handleNotificationDisabled}
+              />
+            </Section>
+          </div>
         </div>
 
         {/* Footer */}
-        <footer className="mt-12 pt-6 border-t border-white/10 text-center">
-          <p className="text-xs text-text-muted">
+        <footer className="mt-16 pt-6 border-t border-white/10 text-center">
+          <p className="text-xs text-text-muted/60">
             GTA VI Waiting Room · v1.0.0 · Not affiliated with Rockstar Games
           </p>
         </footer>
