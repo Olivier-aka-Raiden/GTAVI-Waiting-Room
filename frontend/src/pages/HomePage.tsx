@@ -371,26 +371,6 @@ export function HomePage() {
           <HeroSection game={data} />
         </div>
 
-        {/* Inline tab nav (visible before sticky bar kicks in) */}
-        <div className="sticky top-0 z-40 pt-3 pb-2 -mx-4 px-4 sm:hidden"
-          style={{ background: 'linear-gradient(to bottom, #111117 60%, transparent)' }}>
-          <div className="glass-card !rounded-full px-1 py-1 flex overflow-x-auto scrollbar-none">
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => scrollToSection(tab.id)}
-                className={`flex-shrink-0 text-xs font-semibold px-3 py-2 rounded-full transition-all duration-200 whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'bg-accent-pink/20 text-accent-pink'
-                    : 'text-text-muted hover:text-text-primary'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div className="space-y-6 mt-6">
           {/* Trailers */}
           <div id="section-trailers">
