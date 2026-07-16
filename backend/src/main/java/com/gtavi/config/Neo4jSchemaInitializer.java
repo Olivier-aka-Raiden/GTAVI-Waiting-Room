@@ -41,6 +41,7 @@ public class Neo4jSchemaInitializer {
         session.run("CREATE CONSTRAINT trailer_id_unique IF NOT EXISTS FOR (t:Trailer) REQUIRE t.id IS UNIQUE");
         session.run("CREATE CONSTRAINT event_dedup_unique IF NOT EXISTS FOR (ce:ChangeEvent) REQUIRE ce.deduplicationKey IS UNIQUE");
         session.run("CREATE CONSTRAINT source_code_unique IF NOT EXISTS FOR (s:SourceDefinition) REQUIRE s.code IS UNIQUE");
+        session.run("CREATE CONSTRAINT device_installation_id_unique IF NOT EXISTS FOR (d:DeviceInstallation) REQUIRE d.installationId IS UNIQUE");
         Log.debug("Constraints verified.");
     }
 

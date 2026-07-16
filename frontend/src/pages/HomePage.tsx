@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { getGameOverview } from '../api/game';
 import { registerDevice, getPreferences, updatePreferences } from '../api/devices';
 import type { GameOverview } from '../types/game';
@@ -287,6 +287,11 @@ export function HomePage() {
   });
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
+  // Refs used by handlePrefChange (stable callback with empty deps) to safely
+  // read latest prefsLoaded and accumulate pending changes while loading.
+  const prefsLoadedRef = useRef(false);
+  const pendingPrefsRef = useRef<Partial<NotificationPreferences> | null>(null);
+
   const fetchData = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -297,12 +302,21 @@ export function HomePage() {
   }, []);
 
   useEffect(() => {
+    prefsLoadedRef.current = prefsLoaded;
+  }, [prefsLoaded]);
+
+  useEffect(() => {
     let cancelled = false;
     getPreferences(installationId)
       .then(backendPrefs => {
         if (!cancelled) {
-          setPrefs(backendPrefs);
-          localStorage.setItem('gta-vi-prefs', JSON.stringify(backendPrefs));
+          // If user toggled preferences while loading, merge those pending
+          // changes on top of the backend response so toggles are preserved.
+          const pending = pendingPrefsRef.current;
+          const merged = pending ? { ...backendPrefs, ...pending } : backendPrefs;
+          pendingPrefsRef.current = null;
+          setPrefs(merged);
+          localStorage.setItem('gta-vi-prefs', JSON.stringify(merged));
           setPrefsLoaded(true);
         }
       })
@@ -338,6 +352,11 @@ export function HomePage() {
   }, []);
 
   const handlePrefChange = useCallback((update: Partial<NotificationPreferences>) => {
+    // If prefs haven't loaded from backend yet, accumulate the change so it
+    // isn't lost when getPreferences resolves and overwrites the state.
+    if (!prefsLoadedRef.current) {
+      pendingPrefsRef.current = { ...pendingPrefsRef.current, ...update };
+    }
     setPrefs(p => ({ ...p, ...update }));
   }, []);
 
