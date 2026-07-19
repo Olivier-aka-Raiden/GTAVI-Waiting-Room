@@ -196,7 +196,7 @@ public class Neo4jSchemaInitializer {
                 t.title = 'Grand Theft Auto VI Trailer 2',
                 t.mediaType = 'TRAILER',
                 t.official = true,
-                t.publicationDate = datetime('2024-12-04T00:00:00Z'),
+                t.publicationDate = datetime('2025-05-06T00:00:00Z'),
                 t.videoUrl = 'https://www.youtube.com/watch?v=VQRLujxTm3c',
                 t.sourceUrl = 'https://www.rockstargames.com/VI/media/videos',
                 t.thumbnailUrl = 'https://img.youtube.com/vi/VQRLujxTm3c/maxresdefault.jpg',
@@ -241,10 +241,51 @@ public class Neo4jSchemaInitializer {
                 s.createdAt = coalesce(s.createdAt, datetime()),
                 s.updatedAt = datetime()
             """);
+        session.run("""
+            UNWIND [
+                {code: 'ROCKSTAR_YOUTUBE', name: 'Rockstar Games YouTube', url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCaWd5_7JhbQBe4dknZhsHJg', official: true, interval: 900, priority: 2},
+                {code: 'PS_STORE', name: 'PlayStation Store', url: 'https://store.playstation.com/en-ch/search/grand%20theft%20auto%20vi', official: true, interval: 1800, priority: 3},
+                {code: 'XBOX_STORE', name: 'Xbox Store', url: 'https://www.xbox.com/fr-ch/Search/Results?q=GTAVI', official: true, interval: 1800, priority: 3},
+                {code: 'ROCKSTAR_STORE', name: 'Rockstar Games Store', url: 'https://www.rockstargames.com/VI/editions', official: true, interval: 1800, priority: 3},
+                {code: 'GALAXUS', name: 'Galaxus', url: 'https://www.galaxus.ch/en/search?q=grand+theft+auto+vi', official: false, interval: 900, priority: 4},
+                {code: 'WOG', name: 'WOG.ch', url: 'https://www.wog.ch/fr/index.cfm/search/searchTerm/GTA%206/orderBy/relevance', official: false, interval: 1800, priority: 4},
+                {code: 'AMAZON_FR', name: 'Amazon.fr', url: 'https://www.amazon.fr/s?k=grand+theft+auto+vi', official: false, interval: 1800, priority: 4}
+            ] AS definition
+            MERGE (s:SourceDefinition {code: definition.code})
+            SET s.name = definition.name,
+                s.url = definition.url,
+                s.official = definition.official,
+                s.enabled = true,
+                s.checkIntervalSeconds = definition.interval,
+                s.priority = definition.priority,
+                s.createdAt = coalesce(s.createdAt, datetime()),
+                s.updatedAt = datetime()
+            """);
         Log.debug("Source definitions seeded.");
     }
 
     private void seedInitialEvents(Session session) {
+        // Correct historical seed values in existing databases before deciding
+        // whether initial events need to be created.
+        session.run("""
+            MATCH (ce:ChangeEvent {id: 'event-001'})
+            SET ce.description = 'Rockstar opened pre-orders for Grand Theft Auto VI on June 25, 2026.',
+                ce.deduplicationKey = 'PREORDER_OPENED:2026-06-25',
+                ce.detectedAt = datetime('2026-06-25T00:00:00Z')
+            """);
+        session.run("""
+            MATCH (ce:ChangeEvent {id: 'event-003'})
+            SET ce.detectedAt = datetime('2025-05-06T00:00:00Z')
+            """);
+        session.run("""
+            MATCH (ce:ChangeEvent {sourceCode: 'AMAZON_FR'})
+            WHERE toLower(coalesce(ce.title, '')) CONTAINS 'slowed'
+               OR toLower(coalesce(ce.newValue, '')) CONTAINS 'slowed'
+               OR toLower(coalesce(ce.title, '')) CONTAINS 'explicit'
+               OR toLower(coalesce(ce.newValue, '')) CONTAINS 'explicit'
+            SET ce.userVisible = false, ce.notificationEligible = false
+            """);
+
         // Only seed if no events exist
         var result = session.run("MATCH (ce:ChangeEvent) RETURN count(ce) AS cnt").single();
         if (result.get("cnt").asLong() > 0) return;
@@ -256,10 +297,10 @@ public class Neo4jSchemaInitializer {
                 eventType: 'PREORDER_OPENED',
                 priority: 'MAJOR',
                 title: 'GTA VI pre-orders opened',
-                description: 'Rockstar opened pre-orders for Grand Theft Auto VI on June 25, 2025.',
+                description: 'Rockstar opened pre-orders for Grand Theft Auto VI on June 25, 2026.',
                 evidenceUrl: 'https://www.rockstargames.com/newswire/article/5171972o3ak5oa/pre-order-grand-theft-auto-vi-on-june-25',
-                deduplicationKey: 'PREORDER_OPENED:2025-06-25',
-                detectedAt: datetime('2025-06-25T14:00:00Z'),
+                deduplicationKey: 'PREORDER_OPENED:2026-06-25',
+                detectedAt: datetime('2026-06-25T00:00:00Z'),
                 userVisible: true,
                 notificationEligible: true,
                 createdAt: datetime()
@@ -293,7 +334,7 @@ public class Neo4jSchemaInitializer {
                 description: 'Rockstar published the second official GTA VI trailer.',
                 evidenceUrl: 'https://www.youtube.com/watch?v=VQRLujxTm3c',
                 deduplicationKey: 'NEW_TRAILER:trailer-2',
-                detectedAt: datetime('2024-12-04T00:00:00Z'),
+                detectedAt: datetime('2025-05-06T00:00:00Z'),
                 userVisible: true,
                 notificationEligible: true,
                 createdAt: datetime()

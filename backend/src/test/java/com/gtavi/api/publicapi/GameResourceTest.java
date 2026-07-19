@@ -29,7 +29,10 @@ class GameResourceTest {
             .body("trailers", hasSize(greaterThanOrEqualTo(2)))
             .body("editions", hasSize(greaterThanOrEqualTo(2)))
             .body("latestEvents", hasSize(greaterThanOrEqualTo(1)))
-            .body("systemStatus", notNullValue());
+            .body("systemStatus", notNullValue())
+            .body("systemStatus.monitoredSources", equalTo(10))
+            .body("systemStatus.healthySources", equalTo(0))
+            .body("systemStatus.monitoringHealthy", equalTo(false));
     }
 
     @Test
@@ -41,6 +44,7 @@ class GameResourceTest {
             .contentType(ContentType.JSON)
             .body("size()", greaterThanOrEqualTo(2))
             .body("[0].title", containsString("Trailer 2"))
+            .body("[0].publicationDate", startsWith("2025-05-06"))
             .body("[0].mediaType", equalTo("TRAILER"));
     }
 

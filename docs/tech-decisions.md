@@ -30,11 +30,12 @@ The original spec calls for Jsoup + per-site CSS selectors + fixture tests for e
 ### How it works
 
 ```
-1. Fetch page HTML via Jsoup (with ETag/If-Modified-Since for caching)
+1. Fetch page HTML via Jsoup with bounded response size, retry, and timeout
 2. Pass HTML to the typed @RegisterAiService (e.g. RetailerProductsExtractor)
 3. LangChain4j automatically marshals the LLM's JSON response into a Java record
-4. The record is compiler-enforced — the LLM cannot return malformed fields
-5. Normalize + hash + diff as normal
+4. The record provides schema constraints
+5. Deterministic validators reject irrelevant or unsafe candidates
+6. Normalize + hash + diff as normal
 ```
 
 ### Typed extractors
@@ -72,21 +73,22 @@ This is cheaper than developer time fixing broken selectors.
 ### Safety
 
 - LLM extraction is a **tool**, not the truth authority
-- All extracted data is validated (schema, date parsing, enum matching)
+- Retailer products are validated after AI extraction for game identity, URL safety, enums, price, and availability
+- Equivalent deterministic validators and fixture parsers for official sources are still planned
 - If extraction fails → fallback to PARSER_FAILURE status
 - Previous valid state is NEVER overwritten by a failed extraction
 - The LLM cannot directly modify the database — it only produces structured JSON
 
 ---
 
-## Why Upstash-KV
+## Planned cache layer
 
-We need a cache layer for:
+A separate cache is not currently implemented. Neo4j stores source snapshots and scheduling state. A future cache could provide:
 1. **Snapshot cache** — latest normalized state per source, for fast hash comparison
 2. **Rate limiting** — prevent duplicate monitoring runs
 3. **HTTP ETag cache** — store ETags per source URL for conditional requests
 
-Upstash-KV is Redis-compatible with a generous free tier (10K commands/day, 256MB). We already use it or can easily add it.
+Upstash Redis is one candidate, but it should only be added after measuring Neo4j latency and monitoring overlap in production.
 
 **Alternatives considered:**
 - Redis on Cloud Run: no free tier, adds cost
@@ -115,7 +117,7 @@ For native push notifications on Android/iOS, there is no viable alternative to 
 - APNs (iOS) requires Apple Developer account ($99/year)
 - FCM wraps both APNs and Android push in one API
 - Free tier is unlimited
-- Capacitor has first-class FCM plugin support
+- Firebase supports the current web-push PWA; Capacitor remains an option if native app packaging is added later
 
 This is the ONE genuinely new service added beyond the user's existing stack, and it's unavoidable.
 
@@ -126,7 +128,7 @@ This is the ONE genuinely new service added beyond the user's existing stack, an
 | Service | Free Tier | Est. MVP Usage | Cost |
 |---------|-----------|---------------|------|
 | Neo4j AuraDB Free | 50K nodes | ~200 nodes | $0 |
-| Upstash KV Free | 10K cmds/day | ~2K cmds/day | $0 |
+| Optional Upstash Redis | Not currently used | Add only if metrics justify it | $0 at MVP limits |
 | Cloud Run Free | 2M req/month | ~10K req/month | $0 |
 | Cloud Scheduler Free | 3 jobs | 1 job | $0 |
 | Vercel Free | 100GB bandwidth | ~5GB | $0 |
@@ -146,4 +148,4 @@ This is the ONE genuinely new service added beyond the user's existing stack, an
 | Jsoup CSS selectors | AI extraction | Adapts to site changes |
 | Google Cloud SQL | Neo4j AuraDB | Free tier |
 | Firebase project (hosting) | Vercel | Already using Vercel |
-| Redis | Upstash-KV | Serverless, free tier |
+| Redis | Not currently used | Neo4j is sufficient for the present workload |

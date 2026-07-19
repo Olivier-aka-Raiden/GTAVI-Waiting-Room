@@ -2,7 +2,7 @@
 
 > **Live countdown. Official trailers. Edition tracking. Collector's Edition watch. Push notifications when it matters.**
 
-A mobile-first React + Capacitor app with a Quarkus/Neo4j backend that tracks official GTA VI release information and sends push notifications when meaningful changes occur.
+A mobile-first React PWA with a Quarkus/Neo4j backend that tracks official GTA VI release information and sends web push notifications when meaningful changes occur.
 
 ---
 
@@ -11,10 +11,10 @@ A mobile-first React + Capacitor app with a Quarkus/Neo4j backend that tracks of
 | Layer | Technology | Why |
 |-------|-----------|-----|
 | **Frontend** | React 19 + TypeScript + Vite + Tailwind CSS v4 | Matches radar-app stack; free Vercel hosting |
-| **Mobile** | Capacitor | One codebase → web + Android + iOS; native push |
-| **Backend** | Quarkus 3.36 + RESTEasy Reactive + LangChain4j | Matches radar-app; AI-powered scraping |
+| **Mobile** | Installable PWA | Manifest, offline app shell, and Firebase web push. Capacitor is a future option |
+| **Backend** | Quarkus 3.37 + REST + LangChain4j | Java 21 service with AI-assisted extraction |
 | **Database** | **Neo4j** (not PostgreSQL) | Existing expertise; graph model fits domain; free AuraDB tier |
-| **Cache** | **Upstash-KV** | Rate limiting, snapshot cache; free tier |
+| **State and snapshots** | **Neo4j** | Current implementation. A separate cache is not implemented yet |
 | **Push** | Firebase Cloud Messaging | Only viable native push; generous free tier |
 | **Frontend hosting** | **Vercel** | Free; existing fawzz-tv pattern |
 | **Backend hosting** | Google Cloud Run | Free tier (2M req/month); existing radar-app pattern |
@@ -25,9 +25,9 @@ A mobile-first React + Capacitor app with a Quarkus/Neo4j backend that tracks of
 
 1. **Neo4j instead of PostgreSQL** — Your existing stack. The domain is naturally graph-shaped: Games → Editions → Retailers → Offers, Events linked to Sources, Devices with Preferences. Free AuraDB tier handles MVP scale.
 
-2. **AI-powered scraping instead of CSS selectors** — The spec calls for Jsoup + per-site parsers. Instead, we use **LangChain4j + LLM** to extract structured data from any page. When Rockstar redesigns their site, the AI adapts automatically — no broken selectors, no emergency fixes. This is the core innovation: the monitoring system is an AI agent with tools.
+2. **AI-assisted extraction with deterministic validation** - LangChain4j proposes structured candidates from fetched pages. Business validation rejects irrelevant retailer products, invalid enums, and unsafe URLs before data reaches snapshots, diffs, offers, or notifications.
 
-3. **Upstash-KV** for caching snapshots, rate limiting, and device session state.
+3. **Neo4j-backed snapshots and scheduling** - source snapshots, intervals, events, offers, devices, and preferences currently live in Neo4j. Rate limiting and conditional HTTP caching remain planned work.
 
 4. **Vercel** for frontend (matching fawzz-tv-app deployment).
 
@@ -37,7 +37,7 @@ A mobile-first React + Capacitor app with a Quarkus/Neo4j backend that tracks of
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  React + Vite + Capacitor (Vercel)                      │
+│  React + Vite PWA (Vercel)                              │
 │  ┌─────────┐ ┌──────────┐ ┌────────┐ ┌──────────────┐ │
 │  │Countdown│ │ Trailers │ │Editions│ │Notifications │ │
 │  └─────────┘ └──────────┘ └────────┘ └──────────────┘ │
@@ -56,17 +56,17 @@ A mobile-first React + Capacitor app with a Quarkus/Neo4j backend that tracks of
 │  └───────────────────┬──────────────────────────────┘   │
 └──────────────────────┼──────────────────────────────────┘
                        │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-    ┌─────────┐ ┌──────────┐ ┌──────────┐
-    │  Neo4j  │ │ Upstash  │ │ External │
-    │ AuraDB  │ │   KV     │ │ Sources  │
-    └─────────┘ └──────────┘ └──────────┘
+                 ┌─────┴──────────────────┐
+                 ▼                         ▼
+           ┌─────────┐               ┌──────────┐
+           │  Neo4j  │               │ External │
+           │ AuraDB  │               │ Sources  │
+           └─────────┘               └──────────┘
 ```
 
 ## AI Extraction: LangChain4j with Structured Output
 
-Instead of fragile CSS selectors, the app uses **LangChain4j + DeepSeek** with **strongly-typed DTOs** — the same pattern as Radar's `CompanySentimentAiService`. Each source type has its own `@RegisterAiService` interface that returns a Java record, so LangChain4j handles JSON deserialization automatically. The LLM's output is constrained by the Java type system — it cannot return malformed fields.
+The app uses **LangChain4j + DeepSeek** with typed DTOs for candidate extraction. Each source type has its own `@RegisterAiService` interface that returns a Java record, and retailer candidates pass through deterministic business validation before persistence or notification. Deterministic source adapters remain preferable where stable feeds or embedded structured data are available.
 
 | Extractor | Returns | Used by |
 |-----------|---------|---------|
@@ -82,7 +82,7 @@ Instead of fragile CSS selectors, the app uses **LangChain4j + DeepSeek** with *
 | Site redesign | Parser breaks, needs emergency fix | AI adapts automatically |
 | New source | Write new parser (hours) | Add URL + a typed AiService (minutes) |
 | Unstructured data | Can't handle | AI extracts meaning from any HTML |
-| Output validation | Manual JSON.parse + field checks | Java record — compiler-enforced |
+| Output validation | Manual JSON.parse + field checks | Java schema plus deterministic business validation |
 | Retailer pages | Each needs custom selectors | Same pattern for all retailers |
 
 ---
@@ -114,6 +114,21 @@ Instead of fragile CSS selectors, the app uses **LangChain4j + DeepSeek** with *
 
 ---
 
+## Current reliability behavior
+
+- Retailer AI output is treated as candidate data. A deterministic validator rejects unrelated games, music, books, merchandise, invalid values, and unsafe URLs before snapshots, diffs, offers, or notifications are written.
+- Ordinary retailer listings appear as `RETAIL` events without a major-news push. Collector listings remain critical. Price changes, out-of-stock changes, and back-in-stock changes follow the matching user preferences.
+- Change events are merged by deduplication key before FCM delivery, so replaying the same source state does not resend the event.
+- Every monitor honors its own interval even though Cloud Scheduler can trigger the orchestration endpoint every ten minutes.
+- Monitoring health is based on the latest result from all ten enabled sources. A stale or failed source makes the public status degraded.
+- Offers are separated by retailer, edition, and platform. Legacy relative URLs are resolved against the retailer domain, and offers missing from repeated checks become inactive.
+- Disabling notifications updates the backend eligibility flag. Re-registering the same FCM token deactivates older installations to avoid duplicate delivery.
+- The frontend is an installable PWA with an app-shell service worker. Firebase messaging uses a separate worker scope so push registration does not replace offline support.
+
+The detailed delivery plan and the separate product-expansion workflow are documented in [docs/implementation-roadmap.md](./docs/implementation-roadmap.md).
+
+---
+
 ## Project Structure
 
 ```
@@ -128,7 +143,7 @@ GTAVI-Waiting-Room/
 │   │   ├── notification/      # FCM push sender
 │   │   └── config/            # Quarkus config
 │   └── src/test/
-├── frontend/                  # React + Vite + Capacitor
+├── frontend/                  # React + Vite installable PWA
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── src/
@@ -143,7 +158,9 @@ GTAVI-Waiting-Room/
 
 ---
 
-## Quick Start (after implementation)
+## Quick Start
+
+Requirements: Java 21, Maven or the included Maven wrapper, Node.js 22, npm, and Neo4j 5 or 6.
 
 ```bash
 # Backend
@@ -152,15 +169,13 @@ cd backend
 
 # Frontend
 cd frontend
-npm install
+npm ci
 npm run dev
 
 # Local Neo4j
 docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
   -e NEO4J_AUTH=neo4j/password neo4j:5
 
-# Local Upstash (or use remote free tier)
-# Set UPSTASH_REDIS_URL and UPSTASH_REDIS_TOKEN in .env
 ```
 
 ---
@@ -170,7 +185,6 @@ docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
 | Service | Free Tier | Sufficient? |
 |---------|-----------|-------------|
 | **Neo4j AuraDB** | 50k nodes, 175k relationships | ✓ MVP |
-| **Upstash KV** | 10k commands/day, 256MB | ✓ Caching |
 | **Cloud Run** | 2M req/month, 360K GB-sec | ✓ |
 | **Cloud Scheduler** | 3 jobs free | ✓ |
 | **FCM** | Unlimited | ✓ |
@@ -198,7 +212,7 @@ docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
 | Rockstar GTA VI Main Page | Official | 10 min |
 | Rockstar GTA VI Editions | Official | 10 min |
 | Rockstar GTA VI Media/Videos | Official | 15 min |
-| Rockstar YouTube Channel | Official | 30 min |
+| Rockstar YouTube Channel | Official | 15 min |
 | PlayStation Store (CH) | Official Store | 30 min |
 | Xbox Store (CH) | Official Store | 30 min |
 | Rockstar Games Store | Official Store | 30 min |

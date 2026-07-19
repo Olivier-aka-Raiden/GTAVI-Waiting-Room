@@ -24,7 +24,11 @@ public interface RetailerProductsExtractor {
           - availability: one of IN_STOCK, OUT_OF_STOCK, PREORDER, COMING_SOON, UNAVAILABLE
           - url: the full product URL
           - platform: one of PS5, XSX, PC, UNKNOWN
-        Include EVERY GTA VI product visible on the page.
+        Include only actual GTA VI video-game products. Exclude music tracks,
+        soundtracks, "slowed" or "explicit" audio, books, guides, posters,
+        clothing, accessories and unrelated GTA products.
+        Return an absolute http(s) product URL, never a relative URL.
+        Include EVERY valid GTA VI game product visible on the page.
         Only report products you can see in the HTML.
         """)
     @UserMessage("Extract GTA VI products from this retailer page:\n{{html}}")

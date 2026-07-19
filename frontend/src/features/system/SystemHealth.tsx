@@ -37,6 +37,12 @@ export function SystemHealth({ status }: SystemHealthProps) {
         </p>
       )}
 
+      {status.monitoredSources > 0 && (
+        <p className="text-xs text-text-muted mb-3">
+          {status.healthySources} of {status.monitoredSources} sources healthy
+        </p>
+      )}
+
       <p className="text-xs text-text-muted/60">
         We monitor Rockstar official sources, PlayStation Store, Xbox Store, and Swiss retailers
         around the clock to bring you the latest GTA VI updates.

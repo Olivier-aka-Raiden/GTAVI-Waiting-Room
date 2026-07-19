@@ -4,6 +4,27 @@ interface EditionCardProps {
   edition: Edition;
 }
 
+function safeExternalUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function formatPrice(offer: RetailOffer): string | null {
+  if (offer.price == null || !offer.currency) return null;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: offer.currency,
+    }).format(offer.price);
+  } catch {
+    return `${offer.currency} ${offer.price.toFixed(2)}`;
+  }
+}
+
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     PREORDER_AVAILABLE: 'bg-accent-teal/20 text-accent-teal',
@@ -43,6 +64,10 @@ function EditionTypeBadge({ type, official }: { type: string; official: boolean 
 }
 
 export function EditionCard({ edition }: EditionCardProps) {
+  const validOffers = edition.offers
+    .map(offer => ({ offer, url: safeExternalUrl(offer.url), price: formatPrice(offer) }))
+    .filter((entry): entry is { offer: RetailOffer; url: string; price: string | null } => entry.url !== null);
+
   return (
     <div className="glass-card overflow-hidden card-hover flex flex-col">
       {/* Edition image header */}
@@ -51,6 +76,8 @@ export function EditionCard({ edition }: EditionCardProps) {
           <img
             src={edition.imageUrl}
             alt={edition.name}
+            width="1280"
+            height="720"
             className="w-full h-full object-cover"
             loading="lazy"
           />
@@ -72,32 +99,32 @@ export function EditionCard({ edition }: EditionCardProps) {
         )}
 
         {/* Retailer offers */}
-        {edition.offers.length > 0 && (
+        {validOffers.length > 0 && (
           <div className="mt-auto pt-3 border-t border-white/10">
             <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
               Where to order
             </span>
             <div className="mt-2 space-y-1.5">
-              {edition.offers.map(offer => (
+              {validOffers.map(({ offer, url, price }) => (
                 <a
                   key={offer.id}
-                  href={offer.url}
+                  href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-between group/item py-1.5 px-2 -mx-2 rounded hover:bg-white/5 transition-colors"
+                  className="min-h-11 flex items-center justify-between group/item py-1.5 px-2 -mx-2 rounded hover:bg-white/5 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm text-text-primary group-hover/item:text-accent-pink transition-colors truncate">
                       {offer.retailerName}
                     </span>
-                    {offer.platform && (
+                    {offer.platform && offer.platform !== 'UNKNOWN' && (
                       <span className="text-xs text-text-muted">{offer.platform}</span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {offer.price != null && (
+                    {price && (
                       <span className="text-sm font-medium text-accent-teal whitespace-nowrap">
-                        {offer.currency === 'CHF' ? 'CHF' : offer.currency} {offer.price.toFixed(2)}
+                        {price}
                       </span>
                     )}
                     {offer.preorderAvailable && (

@@ -8,6 +8,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Map;
 
 /**
@@ -21,7 +23,7 @@ public class MonitoringResource {
     @Inject
     MonitoringOrchestrator orchestrator;
 
-    @ConfigProperty(name = "gtavi.internal.shared-secret", defaultValue = "dev-secret-change-me")
+    @ConfigProperty(name = "gtavi.internal.shared-secret")
     String sharedSecret;
 
     @POST
@@ -79,11 +81,11 @@ public class MonitoringResource {
     }
 
     private boolean isAuthorized(String secret) {
-        // In dev mode, accept the shared secret
-        if (sharedSecret.equals("dev-secret-change-me")) {
-            // Dev mode — accept any valid-looking request
-            return true;
+        if (secret == null || secret.isBlank() || sharedSecret == null || sharedSecret.isBlank()) {
+            return false;
         }
-        return sharedSecret.equals(secret);
+        return MessageDigest.isEqual(
+            sharedSecret.getBytes(StandardCharsets.UTF_8),
+            secret.getBytes(StandardCharsets.UTF_8));
     }
 }

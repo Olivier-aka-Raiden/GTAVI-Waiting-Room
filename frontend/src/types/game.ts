@@ -93,6 +93,8 @@ export interface ChangeEvent {
 export interface SystemStatus {
   lastMonitoringRunAt: string | null;
   monitoringHealthy: boolean;
+  monitoredSources: number;
+  healthySources: number;
 }
 
 export interface EventsPage {

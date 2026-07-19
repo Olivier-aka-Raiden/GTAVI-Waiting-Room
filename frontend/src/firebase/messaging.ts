@@ -32,16 +32,7 @@ export async function enablePushNotifications(installationId: string): Promise<s
   // 2. Get a fully active service worker registration
   const swReg = await getActiveSwRegistration();
 
-  // 2b. Clear any stale push subscriptions that might cause 304/cache issues
-  try {
-    const sub = await swReg.pushManager.getSubscription();
-    if (sub) {
-      console.log('[FCM] Unsubscribing stale push subscription');
-      await sub.unsubscribe();
-    }
-  } catch { /* non-critical */ }
-
-  // 3. Get the FCM token (this creates a fresh push subscription)
+  // 3. Get or reuse the FCM token for this installation.
   let token: string;
   try {
     token = await getToken(m, { vapidKey, serviceWorkerRegistration: swReg });
@@ -81,21 +72,32 @@ export function onForegroundMessage(callback: (payload: any) => void) {
 
 /**
  * Register the Firebase SW and wait for it to become fully active.
- * Unregisters any stale SWs first, then blocks until the new one
- * reaches the 'activated' state so that PushManager.subscribe() works.
+ * Reuses an active worker when possible, then waits for a new registration
+ * to reach the activated state so PushManager.subscribe() works.
  */
 async function getActiveSwRegistration(): Promise<ServiceWorkerRegistration> {
-  // Unregister all stale FCM workers
   const registrations = await navigator.serviceWorker.getRegistrations();
-  for (const reg of registrations) {
-    if (reg.active?.scriptURL.includes('firebase-messaging-sw')) {
-      console.log('[FCM] Unregistering stale service worker:', reg.active.scriptURL);
-      await reg.unregister();
-    }
+  const expectedScope = new URL('/firebase-cloud-messaging-push-scope/', window.location.origin).href;
+  const existing = registrations.find(reg =>
+    reg.scope === expectedScope && reg.active?.scriptURL.includes('firebase-messaging-sw')
+  );
+  if (existing?.active) {
+    existing.update().catch(() => {});
+    return existing;
   }
 
-  // Register fresh
-  const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  // Remove only legacy FCM registrations that used to control the whole app.
+  await Promise.all(registrations
+    .filter(reg => reg.scope !== expectedScope
+      && reg.active?.scriptURL.includes('firebase-messaging-sw'))
+    .map(reg => reg.unregister()));
+
+  // Register on a dedicated scope.
+  // Keep the FCM worker on a dedicated scope so it does not replace the
+  // app-shell service worker that controls the installable PWA.
+  const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+    scope: '/firebase-cloud-messaging-push-scope/',
+  });
 
   // Already active — done
   if (reg.active) {

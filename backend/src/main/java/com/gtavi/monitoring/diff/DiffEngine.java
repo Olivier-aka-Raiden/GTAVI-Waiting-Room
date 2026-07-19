@@ -2,9 +2,9 @@ package com.gtavi.monitoring.diff;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.gtavi.domain.ChangeEvent;
-import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.*;
 
@@ -246,32 +246,91 @@ public class DiffEngine {
         JsonNode currProducts = curr.get("products");
         if (currProducts == null) return events;
 
-        Set<String> prevNames = productNames(prevProducts);
-        Set<String> currNames = productNames(currProducts);
+        Map<String, JsonNode> previousByKey = productsByKey(prevProducts);
+        Map<String, JsonNode> currentByKey = productsByKey(currProducts);
+        String retailer = retailerName(sourceCode);
 
-        // New products detected at retailer
-        Set<String> added = new HashSet<>(currNames);
-        if (prevNames != null) added.removeAll(prevNames);
+        for (var entry : currentByKey.entrySet()) {
+            String key = entry.getKey();
+            JsonNode currentProduct = entry.getValue();
+            JsonNode previousProduct = previousByKey.get(key);
+            String name = text(currentProduct, "name", "GTA VI product");
+            String productUrl = text(currentProduct, "url", sourceUrl);
 
-        for (String name : added) {
+            if (previousProduct != null) {
+                events.addAll(diffRetailerProductState(
+                    sourceCode, retailer, key, productUrl, previousProduct, currentProduct));
+                continue;
+            }
+
             boolean isCollector = name.toLowerCase().replaceAll("[^a-z]", "").contains("collector");
             if (isCollector) {
-                // Get the product URL for the collector edition
-                String productUrl = getProductUrl(name, currProducts);
                 events.add(createEvent(sourceCode, sourceUrl,
                     "COLLECTOR_LISTING_DETECTED_AT_RETAILER", "CRITICAL",
-                    "Collector's Edition listed at " + sourceCode + "!",
+                    "Collector's Edition listed at " + retailer + "!",
                     "A retailer is listing a Collector's Edition: " + name + ". Check the app for details.",
                     null, name,
-                    "COLLECTOR_RETAILER:" + sourceCode + ":" + sanitizeKey(name)));
+                    "COLLECTOR_RETAILER:" + sourceCode + ":" + sanitizeKey(key),
+                    productUrl));
             } else {
                 events.add(createEvent(sourceCode, sourceUrl,
-                    "RETAILER_LISTING_CREATED", "MAJOR",
-                    "New listing at " + sourceCode + ": " + name,
+                    "RETAILER_LISTING_CREATED", "RETAIL",
+                    "New listing at " + retailer + ": " + name,
                     "A new GTA VI product listing was detected.",
                     null, name,
-                    "RETAILER_LISTING:" + sourceCode + ":" + sanitizeKey(name)));
+                    "RETAILER_LISTING:" + sourceCode + ":" + sanitizeKey(key),
+                    productUrl));
             }
+        }
+
+        return events;
+    }
+
+    private List<ChangeEvent> diffRetailerProductState(
+        String sourceCode, String retailer, String key, String evidenceUrl,
+        JsonNode previous, JsonNode current
+    ) {
+        List<ChangeEvent> events = new ArrayList<>();
+        String name = text(current, "name", "GTA VI product");
+        String previousAvailability = text(previous, "availability", "UNKNOWN");
+        String currentAvailability = text(current, "availability", "UNKNOWN");
+
+        if (!previousAvailability.equals(currentAvailability)) {
+            if (isUnavailable(currentAvailability) && !isUnavailable(previousAvailability)) {
+                events.add(createEvent(sourceCode, evidenceUrl,
+                    "OUT_OF_STOCK", "RETAIL",
+                    name + " is out of stock at " + retailer,
+                    "The retailer changed this offer from " + previousAvailability
+                        + " to " + currentAvailability + ".",
+                    previousAvailability, currentAvailability,
+                    "STOCK:" + sourceCode + ":" + sanitizeKey(key) + ":OUT",
+                    evidenceUrl));
+            } else if (isAvailable(currentAvailability) && isUnavailable(previousAvailability)) {
+                events.add(createEvent(sourceCode, evidenceUrl,
+                    "BACK_IN_STOCK", "MAJOR",
+                    name + " is back in stock at " + retailer,
+                    "The retailer changed this offer from " + previousAvailability
+                        + " to " + currentAvailability + ".",
+                    previousAvailability, currentAvailability,
+                    "STOCK:" + sourceCode + ":" + sanitizeKey(key) + ":BACK",
+                    evidenceUrl));
+            }
+        }
+
+        BigDecimal previousPrice = decimal(previous.get("price"));
+        BigDecimal currentPrice = decimal(current.get("price"));
+        if (previousPrice != null && currentPrice != null
+            && previousPrice.compareTo(currentPrice) != 0) {
+            String currency = text(current, "currency", "");
+            events.add(createEvent(sourceCode, evidenceUrl,
+                "PRICE_CHANGED", "RETAIL",
+                "Price changed at " + retailer + ": " + name,
+                "The listed price changed from " + formatPrice(previousPrice, currency)
+                    + " to " + formatPrice(currentPrice, currency) + ".",
+                previousPrice.toPlainString(), currentPrice.toPlainString(),
+                "PRICE:" + sourceCode + ":" + sanitizeKey(key) + ":"
+                    + previousPrice.toPlainString() + ":" + currentPrice.toPlainString(),
+                evidenceUrl));
         }
 
         return events;
@@ -292,22 +351,53 @@ public class DiffEngine {
         return lower.contains("collector") || lower.contains("collectors");
     }
 
-    private Set<String> productNames(JsonNode products) {
-        if (products == null) return Set.of();
-        Set<String> names = new LinkedHashSet<>();
+    private Map<String, JsonNode> productsByKey(JsonNode products) {
+        Map<String, JsonNode> indexed = new LinkedHashMap<>();
+        if (products == null || !products.isArray()) return indexed;
         for (JsonNode p : products) {
-            if (p.has("name")) names.add(p.get("name").asText());
+            // Keep identity compatible with snapshots created before canonicalKey
+            // was introduced, avoiding a one-time burst of false "new" events.
+            String key = text(p, "edition", "UNKNOWN") + "|"
+                + text(p, "platform", "UNKNOWN") + "|"
+                + sanitizeKey(text(p, "name", "unknown"));
+            indexed.put(key, p);
         }
-        return names;
+        return indexed;
     }
 
-    private String getProductUrl(String name, JsonNode products) {
-        for (JsonNode p : products) {
-            if (p.has("name") && p.get("name").asText().equals(name) && p.has("url")) {
-                return p.get("url").asText();
-            }
-        }
-        return null;
+    private boolean isUnavailable(String availability) {
+        return "OUT_OF_STOCK".equals(availability) || "UNAVAILABLE".equals(availability);
+    }
+
+    private boolean isAvailable(String availability) {
+        return "IN_STOCK".equals(availability) || "AVAILABLE".equals(availability)
+            || "PREORDER".equals(availability) || "PREORDER_AVAILABLE".equals(availability);
+    }
+
+    private BigDecimal decimal(JsonNode value) {
+        return value != null && value.isNumber() ? value.decimalValue() : null;
+    }
+
+    private String formatPrice(BigDecimal price, String currency) {
+        return price.stripTrailingZeros().toPlainString()
+            + (currency.isBlank() ? "" : " " + currency);
+    }
+
+    private String text(JsonNode node, String field, String fallback) {
+        JsonNode value = node != null ? node.get(field) : null;
+        return value == null || value.isNull() ? fallback : value.asText(fallback);
+    }
+
+    private String retailerName(String sourceCode) {
+        return switch (sourceCode) {
+            case "PS_STORE" -> "PlayStation Store";
+            case "XBOX_STORE" -> "Xbox Store";
+            case "ROCKSTAR_STORE" -> "Rockstar Games Store";
+            case "AMAZON_FR" -> "Amazon.fr";
+            case "GALAXUS" -> "Galaxus";
+            case "WOG" -> "WOG.ch";
+            default -> sourceCode;
+        };
     }
 
     private Set<String> videoTitles(JsonNode videos) {
@@ -356,7 +446,8 @@ public class DiffEngine {
         event.setDeduplicationKey(deduplicationKey);
         event.setDetectedAt(OffsetDateTime.now());
         event.setUserVisible(true);
-        event.setNotificationEligible("CRITICAL".equals(priority) || "MAJOR".equals(priority));
+        event.setNotificationEligible("CRITICAL".equals(priority) || "MAJOR".equals(priority)
+            || Set.of("PRICE_CHANGED", "OUT_OF_STOCK", "BACK_IN_STOCK").contains(eventType));
         event.setCreatedAt(OffsetDateTime.now());
         return event;
     }

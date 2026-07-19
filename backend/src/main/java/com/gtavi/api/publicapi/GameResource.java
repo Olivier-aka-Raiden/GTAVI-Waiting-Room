@@ -10,7 +10,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
-import java.time.OffsetDateTime;
+import java.net.URI;
 import java.util.List;
 
 /**
@@ -41,7 +41,7 @@ public class GameResource {
         List<Trailer> trailers = gameService.getTrailers("GTA_VI", "TRAILER");
         List<Edition> editions = gameService.getEditions("GTA_VI");
         List<com.gtavi.domain.ChangeEvent> events = gameService.getEvents("GTA_VI", 0, 5);
-        OffsetDateTime lastCheck = gameService.getLastSuccessfulCheck();
+        var monitoringHealth = gameService.getMonitoringHealth();
 
         var overview = new GameOverviewResponse(
             game.getCode(),
@@ -53,14 +53,15 @@ public class GameResource {
                 "LOCAL_MIDNIGHT",
                 true,
                 game.getOfficialSiteUrl(),
-                lastCheck,
+                monitoringHealth.lastSuccessfulAt(),
                 game.getLastChangedAt()
             ),
             trailers.isEmpty() ? null : toTrailerResponse(trailers.get(0)),
             trailers.stream().map(this::toTrailerResponse).toList(),
             editions.stream().map(this::toEditionResponse).toList(),
             events.stream().map(this::toEventResponse).toList(),
-            new SystemStatusResponse(lastCheck, lastCheck != null)
+            new SystemStatusResponse(monitoringHealth.lastRunAt(), monitoringHealth.healthy(),
+                monitoringHealth.monitoredSources(), monitoringHealth.healthySources())
         );
 
         return Response.ok(overview).build();
@@ -122,7 +123,7 @@ public class GameResource {
                 getRetailerName(o.getRetailerCode()),
                 o.getPlatform(), o.getPrice(), o.getCurrency(),
                 o.getAvailabilityStatus(), o.isPreorderAvailable(),
-                o.getUrl(), o.getLastSuccessfulCheckAt()
+                normalizeOfferUrl(o.getRetailerCode(), o.getUrl()), o.getLastSuccessfulCheckAt()
             ))
             .toList();
 
@@ -136,10 +137,33 @@ public class GameResource {
         return switch (code) {
             case "PS_STORE" -> "PlayStation Store";
             case "XBOX_STORE" -> "Xbox Store";
+            case "ROCKSTAR_STORE" -> "Rockstar Games Store";
+            case "AMAZON_FR" -> "Amazon.fr";
             case "GALAXUS" -> "Galaxus";
             case "WOG" -> "WOG.ch";
-            default -> code;
+            default -> "Retailer";
         };
+    }
+
+    private String normalizeOfferUrl(String retailerCode, String value) {
+        if (value == null || value.isBlank()) return null;
+        String baseUrl = switch (retailerCode) {
+            case "PS_STORE" -> "https://store.playstation.com/en-ch/";
+            case "XBOX_STORE" -> "https://www.xbox.com/en-ch/";
+            case "ROCKSTAR_STORE" -> "https://www.rockstargames.com/VI/";
+            case "AMAZON_FR" -> "https://www.amazon.fr/";
+            case "GALAXUS" -> "https://www.galaxus.ch/";
+            case "WOG" -> "https://www.wog.ch/";
+            default -> null;
+        };
+        try {
+            URI uri = baseUrl == null ? URI.create(value) : URI.create(baseUrl).resolve(value);
+            if (uri.getHost() == null || !("https".equalsIgnoreCase(uri.getScheme())
+                || "http".equalsIgnoreCase(uri.getScheme()))) return null;
+            return uri.toString();
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private ChangeEventResponse toEventResponse(com.gtavi.domain.ChangeEvent ce) {

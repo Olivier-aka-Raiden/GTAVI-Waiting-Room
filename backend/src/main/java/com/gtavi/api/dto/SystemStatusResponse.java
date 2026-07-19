@@ -8,5 +8,7 @@ import java.util.List;
  */
 public record SystemStatusResponse(
     OffsetDateTime lastMonitoringRunAt,
-    boolean monitoringHealthy
+    boolean monitoringHealthy,
+    int monitoredSources,
+    int healthySources
 ) {}
