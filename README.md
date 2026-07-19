@@ -12,7 +12,7 @@ A mobile-first React PWA with a Quarkus/Neo4j backend that tracks official GTA V
 |-------|-----------|-----|
 | **Frontend** | React 19 + TypeScript + Vite + Tailwind CSS v4 | Matches radar-app stack; free Vercel hosting |
 | **Mobile** | Installable PWA | Manifest, offline app shell, and Firebase web push. Capacitor is a future option |
-| **Backend** | Quarkus 3.37 + REST + LangChain4j | Java 26 service with AI-assisted extraction |
+| **Backend** | Quarkus 3.37 + REST + LangChain4j | Java 21 service with AI-assisted extraction |
 | **Database** | **Neo4j** (not PostgreSQL) | Existing expertise; graph model fits domain; free AuraDB tier |
 | **State and snapshots** | **Neo4j** | Current implementation. A separate cache is not implemented yet |
 | **Push** | Firebase Cloud Messaging | Only viable native push; generous free tier |
@@ -160,7 +160,7 @@ GTAVI-Waiting-Room/
 
 ## Quick Start
 
-Requirements: Java 26, Maven or the included Maven wrapper, Node.js 22, npm, and Neo4j 5 or 6.
+Requirements: Java 21, Maven or the included Maven wrapper, Node.js 22, npm, and Neo4j 5 or 6.
 
 ```bash
 # Backend

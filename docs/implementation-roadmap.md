@@ -8,7 +8,7 @@ Goal: every visible event and every push notification is relevant, traceable, de
 
 Scope status for this pull request:
 
-- Implemented: every P0 item in A1 through A4, PWA installability, Java 26 CI, and the deployment image corrections.
+- Implemented: every P0 item in A1 through A4, PWA installability, Java 21 CI, and the deployment image corrections.
 - Pending deployment validation: the A5 production sequence and its two-cycle observation period.
 - Planned follow-ups: deterministic non-AI adapters, extraction evidence, notification outbox, delivery metrics, overlapping-run protection, retention, and automated performance budgets.
 
@@ -55,7 +55,7 @@ Scope status for this pull request:
 
 ### A5. Delivery sequence
 
-1. Run CI on Java 26 and Node 22.
+1. Run CI on Java 21 and Node 22.
 2. Back up the production Neo4j database.
 3. Deploy the backend first so seed corrections and URL normalization apply before the new frontend reads them.
 4. Trigger one source at a time and inspect accepted products, rejected products, generated events, and notification eligibility.
