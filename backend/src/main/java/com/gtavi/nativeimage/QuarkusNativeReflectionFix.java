@@ -48,6 +48,10 @@ import org.apache.logging.log4j.spi.ExtendedLoggerWrapper;
         "io.grpc.netty.shaded.io.netty.util.internal.logging.Slf4JLoggerFactory",
         "io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent0",
         "io.grpc.netty.shaded.io.netty.util.internal.CleanerJava9",
+
+        // Google gax native-image utils warnings
+        "io.grpc.netty.shaded.io.netty.channel.ProtocolNegotiators",
+        "com.google.common.util.concurrent.AbstractFuture$Waiter",
     }
 )
 public class QuarkusNativeReflectionFix {
