@@ -119,8 +119,7 @@ public class NotificationService {
             case "RELEASE_DATE_CHANGED" -> "releaseDateChanges";
             case "NEW_TRAILER" -> "newOfficialTrailers";
             case "NEW_OFFICIAL_EDITION", "EDITION_REMOVED",
-                 "PREORDER_OPENED", "PREORDER_CLOSED",
-                 "RETAILER_LISTING_CREATED" -> "majorRockstarNews";
+                 "PREORDER_OPENED", "PREORDER_CLOSED" -> "majorRockstarNews";
             case "NEW_OFFICIAL_VIDEO" -> "generalNews";
             case "BACK_IN_STOCK" -> "backInStock";
             case "OUT_OF_STOCK" -> "outOfStock";

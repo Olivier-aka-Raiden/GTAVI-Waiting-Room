@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { enablePushNotifications } from '../../firebase/messaging';
 import type { NotificationPreferences } from '../../api/devices';
+import { updateDevice } from '../../api/devices';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -72,27 +73,51 @@ const TOGGLES: ToggleDef[] = [
 
 // ── Custom toggle switch ───────────────────────────────────────────────────
 
-function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function ToggleSwitch({
+  checked,
+  onChange,
+  disabled,
+  labelledBy,
+  describedBy,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  labelledBy: string;
+  describedBy: string;
+}) {
   return (
-    <button
-      type="button"
+    <>
+      <input
+      type="checkbox"
       role="switch"
       aria-checked={checked}
+      aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
+      checked={checked}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-accent-pink/50 focus:ring-offset-1 focus:ring-offset-bg-primary ${
-        disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-      } ${
-        checked ? 'bg-accent-pink' : 'bg-white/10'
-      }`}
-    >
-      <span
-        className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-          checked ? 'translate-x-[18px]' : 'translate-x-[2px]'
-        }`}
-        style={{ marginTop: '2px' }}
+      onChange={event => onChange(event.target.checked)}
+      className="peer sr-only"
       />
-    </button>
+      <span
+        className={`inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-lg transition-opacity peer-focus-visible:ring-2 peer-focus-visible:ring-accent-pink/50 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-bg-primary ${
+          disabled ? 'opacity-40' : ''
+        }`}
+        aria-hidden="true"
+      >
+        <span
+          className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${
+            checked ? 'bg-accent-pink' : 'bg-white/10'
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+              checked ? 'translate-x-[18px]' : 'translate-x-[2px]'
+            }`}
+          />
+        </span>
+      </span>
+    </>
   );
 }
 
@@ -113,6 +138,8 @@ export function NotificationPanel({
     return 'idle';
   });
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  const [disableError, setDisableError] = useState<string | null>(null);
+  const [isDisabling, setIsDisabling] = useState(false);
 
   // Sync with native permission changes
   useEffect(() => {
@@ -150,11 +177,20 @@ export function NotificationPanel({
     }
   };
 
-  const disable = () => {
-    localStorage.removeItem('gta-vi-notifications-enabled');
-    localStorage.setItem('gta-vi-notifications-disabled', 'true');
-    setPermState('idle');
-    onNotificationDisabled();
+  const disable = async () => {
+    setDisableError(null);
+    setIsDisabling(true);
+    try {
+      await updateDevice(installationId, { notificationsEnabled: false });
+      localStorage.removeItem('gta-vi-notifications-enabled');
+      localStorage.setItem('gta-vi-notifications-disabled', 'true');
+      setPermState('idle');
+      onNotificationDisabled();
+    } catch {
+      setDisableError('Could not disable notifications. Please try again.');
+    } finally {
+      setIsDisabling(false);
+    }
   };
 
   return (
@@ -202,15 +238,16 @@ export function NotificationPanel({
         {isActive ? (
           <button
             onClick={disable}
-            className="w-full py-2.5 rounded-lg border border-white/10 text-sm font-medium text-text-muted hover:text-accent-pink hover:border-accent-pink/30 transition-colors"
+            disabled={isDisabling}
+            className="w-full min-h-11 py-2.5 rounded-lg border border-white/10 text-sm font-medium text-text-muted hover:text-accent-pink hover:border-accent-pink/30 transition-colors disabled:opacity-50"
           >
-            Disable notifications
+            {isDisabling ? 'Disabling...' : 'Disable notifications'}
           </button>
         ) : (
           <button
             onClick={requestPermission}
             disabled={isLoading || isDenied || isFailed}
-            className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-all ${
+            className={`w-full min-h-11 py-2.5 rounded-lg text-sm font-semibold transition-all ${
               isDenied || isFailed
                 ? 'bg-white/5 text-text-muted/50 cursor-not-allowed'
                 : 'bg-accent-pink text-text-dark hover:bg-accent-pink/90 active:scale-[0.98]'
@@ -223,6 +260,10 @@ export function NotificationPanel({
           </button>
         )}
       </div>
+
+      {disableError && (
+        <p className="text-xs text-accent-orange mb-4" role="alert">{disableError}</p>
+      )}
 
       {/* ── Error details ── */}
       {isDenied && (
@@ -266,14 +307,16 @@ export function NotificationPanel({
               checked={preferences[key]}
               onChange={v => onPreferencesChange({ [key]: v })}
               disabled={!isActive}
+              labelledBy={`notification-${key}-label`}
+              describedBy={`notification-${key}-description`}
             />
             <div className="flex-1 min-w-0">
-              <span className={`text-sm transition-colors ${
+              <span id={`notification-${key}-label`} className={`text-sm transition-colors ${
                 isActive && preferences[key] ? 'text-text-primary' : 'text-text-muted'
               }`}>
                 {label}
               </span>
-              <p className="text-xs text-text-muted/60 mt-0.5">{description}</p>
+              <p id={`notification-${key}-description`} className="text-xs text-text-muted/60 mt-0.5">{description}</p>
             </div>
           </label>
         ))}

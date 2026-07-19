@@ -42,6 +42,14 @@ public class DeviceResource {
 
         try (var session = driver.session()) {
             session.run("""
+                MATCH (other:DeviceInstallation {pushToken: $pushToken})
+                WHERE other.installationId <> $installationId
+                SET other.active = false,
+                    other.notificationsEnabled = false,
+                    other.updatedAt = datetime()
+                """, Map.of("pushToken", pushToken, "installationId", installationId));
+
+            session.run("""
                 MERGE (d:DeviceInstallation {installationId: $installationId})
                 SET d.pushToken = $pushToken,
                     d.platform = $platform,
@@ -118,6 +126,10 @@ public class DeviceResource {
             if (body.containsKey("locale")) {
                 setClause.append("d.locale = $locale, ");
                 params.put("locale", body.get("locale"));
+            }
+            if (body.containsKey("notificationsEnabled")) {
+                setClause.append("d.notificationsEnabled = $notificationsEnabled, ");
+                params.put("notificationsEnabled", body.get("notificationsEnabled"));
             }
             setClause.append("d.lastSeenAt = datetime(), d.updatedAt = datetime()");
 

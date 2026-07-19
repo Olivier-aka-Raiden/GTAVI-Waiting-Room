@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gtavi.domain.ChangeEvent;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -179,8 +180,10 @@ class DiffEngineTest {
         List<ChangeEvent> events = engine.diff("GALAXUS", "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("RETAILER_LISTING_CREATED", events.get(0).getEventType());
-        assertEquals("MAJOR", events.get(0).getPriority());
-        assertTrue(events.get(0).getTitle().contains("GALAXUS"));
+        assertEquals("RETAIL", events.get(0).getPriority());
+        assertFalse(events.get(0).isNotificationEligible());
+        assertTrue(events.get(0).getTitle().contains("Galaxus"));
+        assertEquals("https://galaxus.ch/p/123", events.get(0).getEvidenceUrl());
     }
 
     @Test
@@ -221,5 +224,48 @@ class DiffEngineTest {
         assertEquals(2, events.size());
         assertTrue(events.stream().anyMatch(e -> "RETAILER_LISTING_CREATED".equals(e.getEventType())));
         assertTrue(events.stream().anyMatch(e -> "COLLECTOR_LISTING_DETECTED_AT_RETAILER".equals(e.getEventType())));
+    }
+
+    @Test
+    void testRetailerPriceChangeDetected() throws Exception {
+        var prev = mapper.readTree("""
+            {"products":[{"name":"GTA VI Standard Edition","edition":"STANDARD",
+            "platform":"PS5","price":89.90,"currency":"CHF","availability":"PREORDER",
+            "url":"https://galaxus.ch/p/123"}]}
+            """);
+        var curr = mapper.readTree("""
+            {"products":[{"name":"GTA VI Standard Edition","edition":"STANDARD",
+            "platform":"PS5","price":79.90,"currency":"CHF","availability":"PREORDER",
+            "url":"https://galaxus.ch/p/123"}]}
+            """);
+
+        List<ChangeEvent> events = engine.diff("GALAXUS", "http://test", prev, curr);
+
+        assertEquals(1, events.size());
+        assertEquals("PRICE_CHANGED", events.get(0).getEventType());
+        assertEquals(0, new BigDecimal("89.90")
+            .compareTo(new BigDecimal(events.get(0).getOldValue())));
+        assertEquals(0, new BigDecimal("79.90")
+            .compareTo(new BigDecimal(events.get(0).getNewValue())));
+        assertTrue(events.get(0).isNotificationEligible());
+    }
+
+    @Test
+    void testRetailerStockTransitionsDetected() throws Exception {
+        var unavailable = mapper.readTree("""
+            {"products":[{"name":"GTA VI Ultimate Edition","edition":"ULTIMATE",
+            "platform":"XSX","availability":"OUT_OF_STOCK","url":"https://example.com/gta-vi"}]}
+            """);
+        var available = mapper.readTree("""
+            {"products":[{"name":"GTA VI Ultimate Edition","edition":"ULTIMATE",
+            "platform":"XSX","availability":"IN_STOCK","url":"https://example.com/gta-vi"}]}
+            """);
+
+        List<ChangeEvent> events = engine.diff("XBOX_STORE", "http://test", unavailable, available);
+
+        assertEquals(1, events.size());
+        assertEquals("BACK_IN_STOCK", events.get(0).getEventType());
+        assertTrue(events.get(0).getTitle().contains("Xbox Store"));
+        assertTrue(events.get(0).isNotificationEligible());
     }
 }

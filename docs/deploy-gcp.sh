@@ -115,7 +115,7 @@ gcloud scheduler jobs create http $JOB_NAME \
 # If your frontend is on Vercel, update the CORS origin:
 gcloud run services update $SERVICE_NAME \
   --region=$GCP_REGION --project=$GCP_PROJECT \
-  --set-env-vars="QUARKUS_HTTP_CORS_ORIGINS=https://gta-vi-waiting-room.vercel.app"
+  --set-env-vars="QUARKUS_HTTP_CORS_ORIGINS=https://gtavi-waiting-room.vercel.app"
 
 # -------------------------------------------------------
 # VERIFY EVERYTHING
@@ -124,7 +124,7 @@ echo "=== BFF health check ==="
 curl -s "$BFF_URL/q/health" | jq .
 
 echo "=== GTA VI data ==="
-curl -s "$BFF_URL/api/v1/games/gta-vi" | jq .name,.releaseDate
+curl -s "$BFF_URL/api/v1/games/gta-vi" | jq .name,.release.date
 
 echo "=== Scheduler job ==="
 gcloud scheduler jobs describe $JOB_NAME \

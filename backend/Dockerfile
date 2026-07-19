@@ -1,8 +1,14 @@
-# Single-stage build — expects pre-built Quarkus app in target/quarkus-app/
-# Run before docker build:  ./mvnw package -DskipTests
-#
-# For gcloud run deploy --source . :
-#   gcloud run deploy gtavi-api --source . --region europe-west1 ...
+# Build the Quarkus application inside the image so Cloud Build and local
+# Docker builds do not depend on a pre-populated target directory.
+FROM maven:3.9.11-amazoncorretto-26 AS build
+
+WORKDIR /workspace
+COPY pom.xml mvnw ./
+COPY .mvn .mvn
+RUN ./mvnw --batch-mode dependency:go-offline
+
+COPY src src
+RUN ./mvnw --batch-mode package -DskipTests
 
 FROM amazoncorretto:26
 ENV LANGUAGE='en_US:en'
@@ -10,10 +16,10 @@ ENV LANGUAGE='en_US:en'
 WORKDIR /deployments
 
 # Copy the Quarkus fast-jar layout (built by mvn package)
-COPY --chown=185:0 target/quarkus-app/lib/   /deployments/lib/
-COPY --chown=185:0 target/quarkus-app/*.jar  /deployments/
-COPY --chown=185:0 target/quarkus-app/app/   /deployments/app/
-COPY --chown=185:0 target/quarkus-app/quarkus/ /deployments/quarkus/
+COPY --from=build --chown=185:0 /workspace/target/quarkus-app/lib/ /deployments/lib/
+COPY --from=build --chown=185:0 /workspace/target/quarkus-app/*.jar /deployments/
+COPY --from=build --chown=185:0 /workspace/target/quarkus-app/app/ /deployments/app/
+COPY --from=build --chown=185:0 /workspace/target/quarkus-app/quarkus/ /deployments/quarkus/
 
 EXPOSE 8080
 

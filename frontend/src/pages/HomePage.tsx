@@ -9,6 +9,7 @@ import { TrailerCarousel } from '../features/trailers/TrailerCarousel';
 import { EditionSection } from '../features/editions/EditionSection';
 import { EventTimeline } from '../features/events/EventTimeline';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
+import { SystemHealth } from '../features/system/SystemHealth';
 import type { NotificationPreferences } from '../api/devices';
 
 // ── Default preferences (used as initial state while loading) ──────────────
@@ -32,14 +33,17 @@ function VerificationBadge({ lastCheck, healthy }: { lastCheck: string | null; h
   const checkDate = new Date(lastCheck);
   const minutesAgo = Math.floor((Date.now() - checkDate.getTime()) / 60000);
   const isStale = minutesAgo > 60;
+  const isDegraded = !healthy;
 
   return (
     <div className={`flex items-center gap-1.5 text-xs ${
-      isStale ? 'text-accent-orange' : 'text-accent-teal'
+      isStale || isDegraded ? 'text-accent-orange' : 'text-accent-teal'
     }`}>
-      <span>{isStale ? '⚠' : '✓'}</span>
+      <span aria-hidden="true">{isStale || isDegraded ? '⚠' : '✓'}</span>
       <span>
-        {isStale
+        {isDegraded
+          ? `Monitoring degraded · last verified ${minutesAgo}m ago`
+          : isStale
           ? `Last verified ${Math.floor(minutesAgo / 60)}h ago`
           : `Verified ${minutesAgo}m ago`}
       </span>
@@ -48,19 +52,54 @@ function VerificationBadge({ lastCheck, healthy }: { lastCheck: string | null; h
 }
 
 function HeroSection({ game }: { game: GameOverview }) {
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
+
+  const shareCountdown = async () => {
+    const text = `GTA VI releases on ${new Date(game.release.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · track the countdown with me!`;
+    const url = window.location.href;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'GTA VI Waiting Room', text, url });
+        setShareStatus('Shared');
+      } else {
+        await navigator.clipboard.writeText(`${text} ${url}`);
+        setShareStatus('Link copied');
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+
+      try {
+        await navigator.clipboard.writeText(`${text} ${url}`);
+        setShareStatus('Link copied');
+      } catch {
+        setShareStatus('Could not share');
+      }
+    }
+
+    window.setTimeout(() => setShareStatus(null), 2500);
+  };
+
   return (
     <div className="relative text-center py-8 sm:py-14">
+      <h1 className="sr-only">GTA VI Waiting Room</h1>
       {/* Logo */}
       <div className="mb-6">
         <img
           src="/assets/logo-gta.png"
           alt="Grand Theft Auto"
+          width="2560"
+          height="1440"
           className="h-12 sm:h-16 mx-auto mb-1 object-contain drop-shadow-lg"
+          decoding="async"
         />
         <img
-          src="/assets/logo-vi.png"
+          src="/assets/icon-192.png"
           alt="VI"
+          width="192"
+          height="192"
           className="h-10 sm:h-14 mx-auto object-contain drop-shadow-lg"
+          decoding="async"
         />
       </div>
 
@@ -90,22 +129,18 @@ function HeroSection({ game }: { game: GameOverview }) {
           healthy={game.systemStatus.monitoringHealthy}
         />
         <button
-          onClick={() => {
-            const text = `GTA VI releases on ${new Date(game.release.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} — track the countdown with me!`;
-            const url = window.location.href;
-            if (navigator.share) {
-              navigator.share({ title: 'GTA VI Waiting Room', text, url }).catch(() => {});
-            } else {
-              navigator.clipboard.writeText(`${text} ${url}`).catch(() => {});
-            }
-          }}
-          className="text-xs text-text-muted hover:text-accent-pink transition-colors flex items-center gap-1"
+          onClick={shareCountdown}
+          className="min-h-11 px-2 text-xs text-text-muted hover:text-accent-pink transition-colors flex items-center gap-1"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
           </svg>
           Share
         </button>
+        <span className="sr-only" aria-live="polite">{shareStatus}</span>
+        {shareStatus && (
+          <span className="text-xs text-accent-teal" aria-hidden="true">{shareStatus}</span>
+        )}
       </div>
     </div>
   );
@@ -159,7 +194,7 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
         <p className="text-text-muted text-sm mb-4">{message}</p>
         <button
           onClick={onRetry}
-          className="px-4 py-2 bg-accent-pink text-text-dark rounded-lg font-semibold hover:opacity-90 transition-opacity"
+          className="min-h-11 px-4 py-2 bg-accent-pink text-text-dark rounded-lg font-semibold hover:opacity-90 transition-opacity"
         >
           Retry
         </button>
@@ -178,11 +213,12 @@ const TABS = [
   { id: 'alerts', label: 'Alerts', emoji: '🔔' },
 ] as const;
 
-function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
+function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck, healthy }: {
   notificationActive: boolean;
   activeTab: string;
   onTabClick: (id: string) => void;
   lastCheck: string | null;
+  healthy: boolean;
 }) {
   const [visible, setVisible] = useState(false);
   const [minutesAgo, setMinutesAgo] = useState<number | null>(null);
@@ -206,7 +242,7 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
   }, [lastCheck]);
 
   return (
-    <div
+    <header
       className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 pt-[env(safe-area-inset-top,0px)] ${
         visible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
       }`}
@@ -215,7 +251,7 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
       <div className="glass-card rounded-none border-t-0 border-x-0 border-b border-white/5">
         <div className="max-w-2xl mx-auto px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <img src="/assets/logo-vi.png" alt="" className="h-5 object-contain" />
+            <img src="/assets/icon-192.png" alt="" width="192" height="192" className="h-5 w-5 object-contain" />
             <span className="text-sm font-semibold text-text-primary" style={{ fontFamily: 'var(--font-display)' }}>
               WAITING ROOM
             </span>
@@ -223,9 +259,9 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
           <div className="flex items-center gap-3">
             {/* Monitoring status */}
             {minutesAgo != null && (
-              <span className="flex items-center gap-1.5 text-xs text-text-muted">
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-teal" />
-                {minutesAgo < 1 ? 'just now' : `${minutesAgo}m ago`}
+              <span className={`flex items-center gap-1.5 text-xs ${healthy ? 'text-text-muted' : 'text-accent-orange'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${healthy ? 'bg-accent-teal' : 'bg-accent-orange'}`} />
+                Last check {minutesAgo < 1 ? 'just now' : `${minutesAgo}m ago`}
               </span>
             )}
             {notificationActive && (
@@ -239,13 +275,14 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
       </div>
 
       {/* Tab row */}
-      <div className="bg-bg-primary/95 backdrop-blur-md border-b border-white/5">
+      <nav className="bg-bg-primary/95 backdrop-blur-md border-b border-white/5" aria-label="Page sections">
         <div className="max-w-2xl mx-auto px-4 py-1.5 flex sm:overflow-visible overflow-x-auto scrollbar-none gap-1">
           {TABS.map(tab => (
             <button
               key={tab.id}
               onClick={() => onTabClick(tab.id)}
-              className={`flex-shrink-0 sm:flex-1 text-xs font-semibold px-3 sm:px-0 py-1.5 rounded-full transition-all duration-200 whitespace-nowrap ${
+              aria-current={activeTab === tab.id ? 'location' : undefined}
+              className={`min-h-11 flex-shrink-0 sm:flex-1 text-xs font-semibold px-3 sm:px-0 py-2.5 rounded-full transition-all duration-200 whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'bg-accent-pink/20 text-accent-pink'
                   : 'text-text-muted hover:text-text-primary'
@@ -256,8 +293,8 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
             </button>
           ))}
         </div>
-      </div>
-    </div>
+      </nav>
+    </header>
   );
 }
 
@@ -337,9 +374,18 @@ export function HomePage() {
 
   const scrollToSection = (id: string) => {
     setActiveTab(id);
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+
+    if (id === 'countdown') {
+      window.scrollTo({ top: 0, behavior });
+      return;
+    }
+
     const el = document.getElementById(`section-${id}`);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const stickyHeaderOffset = 104;
+      const top = el.getBoundingClientRect().top + window.scrollY - stickyHeaderOffset;
+      window.scrollTo({ top, behavior });
     }
   };
 
@@ -379,7 +425,7 @@ export function HomePage() {
           setActiveTab(id);
         }
       },
-      { threshold: 0.3, rootMargin: '-80px 0px -50% 0px' }
+      { threshold: 0.3, rootMargin: '-104px 0px -50% 0px' }
     );
 
     elements.forEach(el => observer.observe(el));
@@ -397,7 +443,7 @@ export function HomePage() {
       {/* Hero poster image overlay */}
       <div
         className="absolute inset-x-0 top-0 h-[70vh] bg-cover bg-top opacity-12 pointer-events-none"
-        style={{ backgroundImage: 'url(/assets/hero-poster.jpg)', maskImage: 'linear-gradient(to bottom, black 40%, transparent)' }}
+        style={{ backgroundImage: 'url(/assets/hero-poster.webp)', maskImage: 'linear-gradient(to bottom, black 40%, transparent)' }}
       />
 
       <StickyBar
@@ -405,9 +451,10 @@ export function HomePage() {
         activeTab={activeTab}
         onTabClick={scrollToSection}
         lastCheck={data.systemStatus.lastMonitoringRunAt}
+        healthy={data.systemStatus.monitoringHealthy}
       />
 
-      <div className="relative max-w-2xl mx-auto px-4 pb-16">
+      <main className="relative max-w-2xl mx-auto px-4 pb-16">
         <div id="section-countdown">
           <HeroSection game={data} />
         </div>
@@ -449,6 +496,11 @@ export function HomePage() {
               />
             </Section>
           </div>
+          <Divider />
+
+          <Section>
+            <SystemHealth status={data.systemStatus} />
+          </Section>
         </div>
 
         {/* Footer */}
@@ -457,7 +509,7 @@ export function HomePage() {
             GTA VI Waiting Room · v1.0.0 · Not affiliated with Rockstar Games
           </p>
         </footer>
-      </div>
+      </main>
     </div>
   );
 }

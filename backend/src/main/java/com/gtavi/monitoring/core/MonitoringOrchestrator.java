@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.gtavi.domain.ChangeEvent;
 import com.gtavi.monitoring.diff.DiffEngine;
 import com.gtavi.notification.NotificationService;
-import com.gtavi.service.GameService;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -24,19 +23,20 @@ public class MonitoringOrchestrator {
     private final Driver driver;
     private final Normalizer normalizer;
     private final DiffEngine diffEngine;
-    private final GameService gameService;
     private final NotificationService notificationService;
+    private final RetailerProductValidator retailerProductValidator;
     private final Instance<GameSourceMonitor> allMonitors;
 
     public MonitoringOrchestrator(Driver driver, Normalizer normalizer,
-                                   DiffEngine diffEngine, GameService gameService,
+                                   DiffEngine diffEngine,
                                    NotificationService notificationService,
+                                   RetailerProductValidator retailerProductValidator,
                                    Instance<GameSourceMonitor> allMonitors) {
         this.driver = driver;
         this.normalizer = normalizer;
         this.diffEngine = diffEngine;
-        this.gameService = gameService;
         this.notificationService = notificationService;
+        this.retailerProductValidator = retailerProductValidator;
         this.allMonitors = allMonitors;
     }
 
@@ -62,19 +62,30 @@ public class MonitoringOrchestrator {
                 MonitorResult result = monitor.fetchCurrentState();
 
                 if (result.isSuccess() && result.normalizedData() != null) {
-                    String hash = normalizer.computeHash(result.normalizedData());
+                    JsonNode currentData = result.normalizedData();
+                    if (isRetailer(monitor.sourceCode())) {
+                        currentData = retailerProductValidator.validate(
+                            monitor.sourceCode(), monitor.sourceUrl(), currentData);
+                    }
+
+                    String hash = normalizer.computeHash(currentData);
 
                     JsonNode previous = loadPreviousSnapshot(monitor.sourceCode());
 
                     storeSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
-                        result.normalizedData(), hash, true, null);
+                        currentData, hash, true, null);
 
                     List<ChangeEvent> events = diffEngine.diff(
                         monitor.sourceCode(), monitor.sourceUrl(),
-                        previous, result.normalizedData());
+                        previous, currentData);
 
+                    int createdForSource = 0;
                     for (ChangeEvent event : events) {
-                        saveEvent(event);
+                        if (!saveEvent(event)) {
+                            Log.debugf("Skipping duplicate event: %s", event.getDeduplicationKey());
+                            continue;
+                        }
+                        createdForSource++;
                         // Send push notifications to eligible devices
                         int notified = notificationService.sendNotifications(event);
                         if (notified > 0) {
@@ -82,17 +93,17 @@ public class MonitoringOrchestrator {
                                 notified, event.getEventType());
                         }
                     }
-                    eventsCreated += events.size();
+                    eventsCreated += createdForSource;
 
                     // Persist retailer offers from product data
                     if (isRetailer(monitor.sourceCode())) {
-                        persistOffers(monitor.sourceCode(), result.normalizedData());
+                        persistOffers(monitor.sourceCode(), currentData);
                     }
 
                     successful++;
                     Log.infof("Monitor %s: SUCCESS (hash=%s, %d events)",
                         monitor.sourceCode(), hash != null ? hash.substring(0, 8) : "null",
-                        events.size());
+                        createdForSource);
                 } else {
                     storeSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
                         null, null, false,
@@ -118,16 +129,40 @@ public class MonitoringOrchestrator {
 
     private List<GameSourceMonitor> getDueMonitors(Set<String> sourceCodes) {
         List<GameSourceMonitor> monitors = new ArrayList<>();
+        int discovered = 0;
         for (GameSourceMonitor m : allMonitors) {
-            if (sourceCodes.isEmpty() || sourceCodes.contains(m.sourceCode())) {
+            discovered++;
+            boolean explicitlyRequested = !sourceCodes.isEmpty() && sourceCodes.contains(m.sourceCode());
+            if (explicitlyRequested || (sourceCodes.isEmpty() && isDue(m))) {
                 monitors.add(m);
             }
         }
-        if (monitors.isEmpty()) {
+        if (discovered == 0) {
             Log.warn("No GameSourceMonitor beans discovered via Instance<> injection. " +
                 "Verify monitors are @ApplicationScoped and in a scanned package.");
+        } else if (monitors.isEmpty()) {
+            Log.debug("No monitoring sources are due for a check.");
         }
         return monitors;
+    }
+
+    private boolean isDue(GameSourceMonitor monitor) {
+        try (var session = driver.session()) {
+            var result = session.run(
+                "MATCH (s:SourceSnapshot {sourceCode: $code}) RETURN max(s.checkedAt) AS lastCheck",
+                Map.of("code", monitor.sourceCode())
+            );
+            if (!result.hasNext()) return true;
+            var record = result.single();
+            if (record.get("lastCheck").isNull()) return true;
+
+            OffsetDateTime lastCheck = record.get("lastCheck").asOffsetDateTime();
+            return lastCheck.isBefore(OffsetDateTime.now().minusSeconds(monitor.checkIntervalSeconds()));
+        } catch (Exception e) {
+            Log.warnf("Could not evaluate schedule for %s; running it: %s",
+                monitor.sourceCode(), e.getMessage());
+            return true;
+        }
     }
 
     private JsonNode loadPreviousSnapshot(String sourceCode) {
@@ -179,9 +214,9 @@ public class MonitoringOrchestrator {
         }
     }
 
-    private void saveEvent(ChangeEvent event) {
+    private boolean saveEvent(ChangeEvent event) {
         try (var session = driver.session()) {
-            session.run("""
+            var result = session.run("""
                 MERGE (ce:ChangeEvent {deduplicationKey: $key})
                 ON CREATE SET
                     ce.id = $id,
@@ -198,6 +233,7 @@ public class MonitoringOrchestrator {
                     ce.userVisible = $userVisible,
                     ce.notificationEligible = $notificationEligible,
                     ce.createdAt = datetime()
+                RETURN ce.id AS persistedId, ce.id = $id AS created
                 """, Map.ofEntries(
                     Map.entry("key", event.getDeduplicationKey()),
                     Map.entry("id", event.getId()),
@@ -213,6 +249,9 @@ public class MonitoringOrchestrator {
                     Map.entry("userVisible", event.isUserVisible()),
                     Map.entry("notificationEligible", event.isNotificationEligible())
                 ));
+            var record = result.single();
+            event.setId(record.get("persistedId").asString());
+            return record.get("created").asBoolean();
         }
     }
 
@@ -231,6 +270,7 @@ public class MonitoringOrchestrator {
         if (products == null || !products.isArray()) return;
 
         List<String> knownEditionIds = getEditionIds();
+        Set<String> seenOfferIds = new HashSet<>();
 
         try (var session = driver.session()) {
             for (JsonNode p : products) {
@@ -258,16 +298,19 @@ public class MonitoringOrchestrator {
                     default -> availability.toUpperCase();
                 };
                 String priceText = p.has("price") ? p.get("price").asText(null) : null;
-                String currency = p.has("currency") ? p.get("currency").asText("CHF") : "CHF";
+                String currency = p.hasNonNull("currency")
+                    ? p.get("currency").asText() : currencyFor(sourceCode);
 
-                String offerId = sourceCode + ":" + editionId;
+                String offerId = sourceCode + ":" + editionId + ":"
+                    + (platform != null ? platform : "UNKNOWN");
+                seenOfferIds.add(offerId);
 
                 var params = new java.util.HashMap<String, Object>();
                 params.put("id", offerId);
                 params.put("editionId", editionId);
                 params.put("retailerCode", sourceCode);
                 params.put("platform", platform != null ? platform : "");
-                params.put("country", "CH");
+                params.put("country", countryFor(sourceCode));
                 params.put("price", priceText != null ? Double.valueOf(priceText) : null);
                 params.put("currency", currency);
                 params.put("url", url != null ? url : "");
@@ -278,6 +321,13 @@ public class MonitoringOrchestrator {
 
                 session.run("""
                     MERGE (o:RetailOffer {id: $id})
+                    ON CREATE SET o.createdAt = datetime()
+                    WITH o, o.updatedAt IS NULL
+                        OR coalesce(toString(o.price), '') <> coalesce(toString($price), '')
+                        OR coalesce(o.currency, '') <> coalesce($currency, '')
+                        OR coalesce(o.url, '') <> coalesce($url, '')
+                        OR coalesce(o.availabilityStatus, '') <> coalesce($availability, '')
+                        AS changed
                     SET o.editionId = $editionId,
                         o.retailerCode = $retailerCode,
                         o.platform = $platform,
@@ -287,15 +337,50 @@ public class MonitoringOrchestrator {
                         o.url = $url,
                         o.availabilityStatus = $availability,
                         o.preorderAvailable = $preorder,
+                        o.active = true,
+                        o.missedChecks = 0,
                         o.lastSuccessfulCheckAt = datetime(),
-                        o.lastChangedAt = coalesce(o.lastChangedAt, datetime()),
-                        o.createdAt = coalesce(o.createdAt, datetime()),
+                        o.lastChangedAt = CASE WHEN changed THEN datetime() ELSE o.lastChangedAt END,
                         o.updatedAt = datetime()
                     """, params);
+
+                // Hide the legacy retailer:edition identity after its
+                // platform-aware replacement has been written.
+                session.run("""
+                    MATCH (legacy:RetailOffer {id: $legacyId})
+                    SET legacy.active = false, legacy.updatedAt = datetime()
+                    """, Map.of("legacyId", sourceCode + ":" + editionId));
             }
+
+            session.run("""
+                MATCH (o:RetailOffer {retailerCode: $sourceCode})
+                WHERE NOT o.id IN $seenOfferIds
+                WITH o, coalesce(o.missedChecks, 0) + 1 AS missedChecks
+                SET o.missedChecks = missedChecks,
+                    o.active = CASE WHEN missedChecks >= 2 THEN false
+                        ELSE coalesce(o.active, true) END,
+                    o.updatedAt = datetime()
+                """, Map.of("sourceCode", sourceCode,
+                    "seenOfferIds", new ArrayList<>(seenOfferIds)));
         }
         Log.debugf("Persisted %d offers for retailer %s",
-            products.size(), sourceCode);
+            seenOfferIds.size(), sourceCode);
+    }
+
+    private String countryFor(String sourceCode) {
+        return switch (sourceCode) {
+            case "AMAZON_FR" -> "FR";
+            case "ROCKSTAR_STORE" -> "US";
+            default -> "CH";
+        };
+    }
+
+    private String currencyFor(String sourceCode) {
+        return switch (sourceCode) {
+            case "AMAZON_FR" -> "EUR";
+            case "ROCKSTAR_STORE" -> "USD";
+            default -> "CHF";
+        };
     }
 
     /** Get all edition IDs from Neo4j. */

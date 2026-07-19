@@ -40,6 +40,13 @@ export interface DeviceRegistration {
   appVersion: string;
 }
 
+export interface DeviceUpdate {
+  pushToken?: string;
+  locale?: string;
+  appVersion?: string;
+  notificationsEnabled?: boolean;
+}
+
 export interface NotificationPreferences {
   collectorEditionAnnouncement: boolean;
   collectorEditionPreorder: boolean;
@@ -56,7 +63,7 @@ export async function registerDevice(reg: DeviceRegistration) {
   return postJson(`${BASE}/devices`, reg);
 }
 
-export async function updateDevice(installationId: string, updates: Partial<DeviceRegistration>) {
+export async function updateDevice(installationId: string, updates: DeviceUpdate) {
   return putJson(`${BASE}/devices/${installationId}`, updates);
 }
 

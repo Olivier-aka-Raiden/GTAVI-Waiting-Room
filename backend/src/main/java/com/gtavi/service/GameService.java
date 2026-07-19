@@ -6,17 +6,12 @@ import com.gtavi.domain.Game;
 import com.gtavi.domain.Retailer;
 import com.gtavi.domain.RetailOffer;
 import com.gtavi.domain.Trailer;
-import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.neo4j.driver.Driver;
 import org.neo4j.driver.Record;
-import org.neo4j.driver.Value;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -105,22 +100,48 @@ public class GameService {
     }
 
     /**
-     * Returns the latest successful source check time (for the verification badge).
+     * Returns monitoring health based on the latest result for every enabled source.
+     * A single recent success no longer masks stale or failing sources.
      */
-    public OffsetDateTime getLastSuccessfulCheck() {
+    public MonitoringHealth getMonitoringHealth() {
         try (var session = driver.session()) {
-            var result = session.run(
-                "MATCH (s:SourceSnapshot {successful: true}) RETURN max(s.checkedAt) AS lastCheck"
-            );
-            if (result.hasNext()) {
-                var record = result.single();
-                if (!record.get("lastCheck").isNull()) {
-                    return record.get("lastCheck").asOffsetDateTime();
-                }
-            }
-            return null;
+            var record = session.run("""
+                MATCH (d:SourceDefinition {enabled: true})
+                OPTIONAL MATCH (s:SourceSnapshot {sourceCode: d.code})
+                WITH d, s ORDER BY s.checkedAt DESC
+                WITH d.code AS sourceCode, collect(s)[0] AS latest
+                RETURN count(sourceCode) AS monitoredSources,
+                       sum(CASE WHEN latest IS NOT NULL AND latest.successful = true
+                           THEN 1 ELSE 0 END) AS healthySources,
+                       max(latest.checkedAt) AS lastRunAt,
+                       max(CASE WHEN latest.successful = true THEN latest.checkedAt
+                           ELSE null END) AS lastSuccessfulAt,
+                       min(latest.checkedAt) AS oldestRunAt
+                """).single();
+
+            int monitoredSources = record.get("monitoredSources").asInt();
+            int healthySources = record.get("healthySources").asInt();
+            OffsetDateTime lastRunAt = record.get("lastRunAt").isNull()
+                ? null : record.get("lastRunAt").asOffsetDateTime();
+            OffsetDateTime lastSuccessfulAt = record.get("lastSuccessfulAt").isNull()
+                ? null : record.get("lastSuccessfulAt").asOffsetDateTime();
+            OffsetDateTime oldestRunAt = record.get("oldestRunAt").isNull()
+                ? null : record.get("oldestRunAt").asOffsetDateTime();
+            boolean recent = oldestRunAt != null
+                && oldestRunAt.isAfter(OffsetDateTime.now().minusHours(2));
+
+            return new MonitoringHealth(lastRunAt, lastSuccessfulAt, monitoredSources, healthySources,
+                monitoredSources > 0 && healthySources == monitoredSources && recent);
         }
     }
+
+    public record MonitoringHealth(
+        OffsetDateTime lastRunAt,
+        OffsetDateTime lastSuccessfulAt,
+        int monitoredSources,
+        int healthySources,
+        boolean healthy
+    ) {}
 
     /**
      * Returns all retailers.
@@ -137,7 +158,8 @@ public class GameService {
     public List<com.gtavi.domain.RetailOffer> getOffers(String editionId) {
         try (var session = driver.session()) {
             return session.run(
-                "MATCH (o:RetailOffer {editionId: $editionId}) RETURN o",
+                "MATCH (o:RetailOffer {editionId: $editionId}) " +
+                "WHERE coalesce(o.active, true) = true RETURN o",
                 java.util.Map.of("editionId", editionId)
             ).list(this::mapToOffer);
         }

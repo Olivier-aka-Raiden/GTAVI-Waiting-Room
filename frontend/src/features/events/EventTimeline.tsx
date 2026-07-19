@@ -36,7 +36,7 @@ function EventCard({ event }: EventCardProps) {
               {event.priority}
             </span>
           </div>
-          <h4 className="text-sm font-semibold text-text-primary mt-1">{event.title}</h4>
+          <h3 className="text-sm font-semibold text-text-primary mt-1">{event.title}</h3>
           {event.description && (
             <p className="text-sm text-text-muted mt-1">{event.description}</p>
           )}
