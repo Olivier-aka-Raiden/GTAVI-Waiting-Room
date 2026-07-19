@@ -7,10 +7,11 @@
     <groupId>com.gtavi</groupId>
     <artifactId>gtavi-backend</artifactId>
     <version>1.0.0-SNAPSHOT</version>
+    <packaging>quarkus</packaging>
 
     <properties>
         <compiler-plugin.version>3.14.1</compiler-plugin.version>
-        <maven.compiler.release>26</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
@@ -95,10 +96,21 @@
             <version>9.4.3</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>2.25.3</version>
+        </dependency>
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+            <version>1.2.17</version>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-junit5</artifactId>
+            <artifactId>quarkus-junit</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -108,6 +120,20 @@
         </dependency>
     </dependencies>
 
+    <profiles>
+        <profile>
+            <id>native</id>
+            <activation>
+                <property>
+                    <name>native</name>
+                </property>
+            </activation>
+            <properties>
+                <skipITs>true</skipITs>
+                <quarkus.native.enabled>true</quarkus.native.enabled>
+            </properties>
+        </profile>
+    </profiles>
     <build>
         <plugins>
             <plugin>
@@ -115,15 +141,6 @@
                 <artifactId>quarkus-maven-plugin</artifactId>
                 <version>${quarkus.platform.version}</version>
                 <extensions>true</extensions>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>build</goal>
-                            <goal>generate-code</goal>
-                            <goal>generate-code-tests</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -141,7 +158,7 @@
                     <systemPropertyVariables>
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                     </systemPropertyVariables>
-                    <argLine>--enable-preview</argLine>
+                    <argLine>@{argLine} --enable-preview</argLine>
                 </configuration>
             </plugin>
         </plugins>
