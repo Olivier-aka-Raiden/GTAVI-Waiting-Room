@@ -1,6 +1,6 @@
 # Build the Quarkus application inside the image so Cloud Build and local
 # Docker builds do not depend on a pre-populated target directory.
-FROM maven:3.9.11-amazoncorretto-21 AS build
+FROM maven:3.9.11-amazoncorretto-26 AS build
 
 WORKDIR /workspace
 COPY pom.xml mvnw ./
@@ -10,7 +10,7 @@ RUN ./mvnw --batch-mode dependency:go-offline
 COPY src src
 RUN ./mvnw --batch-mode package -DskipTests
 
-FROM amazoncorretto:21
+FROM amazoncorretto:26
 ENV LANGUAGE='en_US:en'
 
 WORKDIR /deployments
@@ -28,6 +28,7 @@ USER 185
 ENV JAVA_APP_JAR=/deployments/quarkus-run.jar
 
 ENTRYPOINT ["sh", "-c", "java \
+  --enable-preview \
   -Dquarkus.http.host=0.0.0.0 \
   -Dquarkus.http.port=${PORT:-8080} \
   -Djava.util.logging.manager=org.jboss.logmanager.LogManager \
