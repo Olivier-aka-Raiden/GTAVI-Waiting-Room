@@ -9,7 +9,7 @@ import jakarta.inject.Inject;
 public class XboxStoreMonitor implements GameSourceMonitor {
 
     private static final String CODE = "XBOX_STORE";
-    private static final String URL = "https://www.xbox.com/fr-ch/Search/Results?q=GTAVI";
+    private static final String URL = "https://www.xbox.com/fr-ch/Search/Results?q=Grand+Theft+Auto+VI";
 
     @Inject HttpFetcher fetcher;
     @Inject AiExtractionService aiExtraction;

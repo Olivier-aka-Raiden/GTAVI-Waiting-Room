@@ -9,7 +9,6 @@ import { TrailerCarousel } from '../features/trailers/TrailerCarousel';
 import { EditionSection } from '../features/editions/EditionSection';
 import { EventTimeline } from '../features/events/EventTimeline';
 import { NotificationPanel } from '../features/notifications/NotificationPanel';
-import { SystemHealth } from '../features/system/SystemHealth';
 import type { NotificationPreferences } from '../api/devices';
 
 // ── Default preferences (used as initial state while loading) ──────────────
@@ -27,7 +26,7 @@ const DEFAULT_PREFS: NotificationPreferences = {
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
-function VerificationBadge({ lastCheck, healthy }: { lastCheck: string | null; healthy: boolean }) {
+function VerificationBadge({ lastCheck, healthy = true }: { lastCheck: string | null; healthy?: boolean }) {
   if (!lastCheck) return null;
 
   const checkDate = new Date(lastCheck);
@@ -126,7 +125,7 @@ function HeroSection({ game }: { game: GameOverview }) {
       <div className="mt-4 flex items-center justify-center gap-4">
         <VerificationBadge
           lastCheck={game.release.lastSuccessfulCheckAt}
-          healthy={game.systemStatus.monitoringHealthy}
+          healthy={game.systemStatus?.monitoringHealthy}
         />
         <button
           onClick={shareCountdown}
@@ -213,12 +212,11 @@ const TABS = [
   { id: 'alerts', label: 'Alerts', emoji: '🔔' },
 ] as const;
 
-function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck, healthy }: {
+function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
   notificationActive: boolean;
   activeTab: string;
   onTabClick: (id: string) => void;
   lastCheck: string | null;
-  healthy: boolean;
 }) {
   const [visible, setVisible] = useState(false);
   const [minutesAgo, setMinutesAgo] = useState<number | null>(null);
@@ -259,9 +257,9 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck, healt
           <div className="flex items-center gap-3">
             {/* Monitoring status */}
             {minutesAgo != null && (
-              <span className={`flex items-center gap-1.5 text-xs ${healthy ? 'text-text-muted' : 'text-accent-orange'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${healthy ? 'bg-accent-teal' : 'bg-accent-orange'}`} />
-                Last check {minutesAgo < 1 ? 'just now' : `${minutesAgo}m ago`}
+              <span className="flex items-center gap-1.5 text-xs text-text-muted">
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-teal" />
+                {minutesAgo < 1 ? 'just now' : `${minutesAgo}m ago`}
               </span>
             )}
             {notificationActive && (
@@ -450,8 +448,7 @@ export function HomePage() {
         notificationActive={notificationActive}
         activeTab={activeTab}
         onTabClick={scrollToSection}
-        lastCheck={data.systemStatus.lastMonitoringRunAt}
-        healthy={data.systemStatus.monitoringHealthy}
+        lastCheck={data.systemStatus?.lastMonitoringRunAt ?? null}
       />
 
       <main className="relative max-w-2xl mx-auto px-4 pb-16">
@@ -496,11 +493,7 @@ export function HomePage() {
               />
             </Section>
           </div>
-          <Divider />
 
-          <Section>
-            <SystemHealth status={data.systemStatus} />
-          </Section>
         </div>
 
         {/* Footer */}

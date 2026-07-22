@@ -13,14 +13,16 @@ import com.gtavi.domain.Game;
 import com.gtavi.domain.RetailOffer;
 import com.gtavi.domain.Retailer;
 import com.gtavi.domain.Trailer;
+import com.gtavi.monitoring.core.RetailerProductsData;
+import com.gtavi.monitoring.core.RockstarEditionsData;
+import com.gtavi.monitoring.core.RockstarMainData;
+import com.gtavi.monitoring.core.RockstarMediaData;
 import com.gtavi.service.GameService;
 import io.quarkus.runtime.annotations.RegisterForReflection;
-import org.apache.logging.log4j.spi.ExtendedLogger;
-import org.apache.logging.log4j.spi.ExtendedLoggerWrapper;
 
 /**
- * Registers gRPC shaded Netty, Log4j2, Firebase, and Google Auth
- * classes for native image reflection.
+ * Registers domain/DTO classes for native image reflection (Jackson serialization).
+ * Quarkus extensions handle their own native image config (Neo4j, Firebase, etc).
  *
  * Public classes use class literals; package-private classes use
  * string classNames to bypass Java access checks at compile time.
@@ -44,52 +46,23 @@ import org.apache.logging.log4j.spi.ExtendedLoggerWrapper;
         RetailOffer.class,
         ChangeEvent.class,
 
+        // ── Core classes ──
+        RetailerProductsData.class,
+        RetailerProductsData.ProductItem.class,
+        RockstarEditionsData.class,
+        RockstarEditionsData.EditionItem.class,
+        RockstarMainData.class,
+        RockstarMediaData.class,
+        RockstarMediaData.VideoItem.class,
+
         // ── Service records ──
         GameService.MonitoringHealth.class,
-
-        // ── gRPC shaded Netty logging ──
-        io.grpc.netty.shaded.io.netty.util.internal.logging.InternalLoggerFactory.class,
-        io.grpc.netty.shaded.io.netty.util.internal.logging.JdkLoggerFactory.class,
-
-        // gRPC shaded Netty internal
-        io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent.class,
-        io.grpc.netty.shaded.io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueue.class,
-
-        // Log4j2 SPI
-        ExtendedLogger.class,
-        ExtendedLoggerWrapper.class,
-
-        // Log4j v1
-        org.apache.log4j.Logger.class,
-        org.apache.log4j.Category.class,
-
-        // gRPC service provider
-        io.grpc.netty.shaded.io.grpc.netty.NettyChannelProvider.class,
-
-        // Firebase + Google Auth
-        com.google.auth.oauth2.GoogleCredentials.class,
-        com.google.auth.oauth2.ServiceAccountCredentials.class,
-        com.google.firebase.FirebaseApp.class,
-        com.google.firebase.FirebaseOptions.class,
-        com.google.firebase.messaging.FirebaseMessaging.class,
-        com.google.firebase.messaging.Message.class,
-        com.google.firebase.messaging.Notification.class,
     },
     classNames = {
-        // Package-private gRPC shaded Netty internals
-        "io.grpc.netty.shaded.io.netty.util.internal.logging.Log4J2Logger",
-        "io.grpc.netty.shaded.io.netty.util.internal.logging.Log4J2LoggerFactory",
-        "io.grpc.netty.shaded.io.netty.util.internal.logging.Log4JLogger",
-        "io.grpc.netty.shaded.io.netty.util.internal.logging.Log4JLoggerFactory",
-        "io.grpc.netty.shaded.io.netty.util.internal.logging.Slf4JLogger",
-        "io.grpc.netty.shaded.io.netty.util.internal.logging.Slf4JLoggerFactory",
-        "io.grpc.netty.shaded.io.netty.util.internal.PlatformDependent0",
-        "io.grpc.netty.shaded.io.netty.util.internal.CleanerJava9",
-
-        // Google gax native-image utils warnings
-        "io.grpc.netty.shaded.io.netty.channel.ProtocolNegotiators",
+        // Package-private Neo4j/Google internals that need reflection
         "com.google.common.util.concurrent.AbstractFuture$Waiter",
-    }
+    },
+    serialization = true
 )
 public class QuarkusFixNativeBuild {
 }

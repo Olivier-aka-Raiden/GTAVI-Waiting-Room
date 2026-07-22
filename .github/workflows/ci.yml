@@ -29,12 +29,22 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # Java 26 preview flags required by .mvn/jvm.config and pom.xml
+      MAVEN_OPTS: --enable-preview --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "26"
           cache: maven
           cache-dependency-path: backend/pom.xml
-      - run: ./mvnw --batch-mode test
+
+      # Testcontainers needs Docker for Neo4j DevServices
+      - name: Verify Docker
+        run: docker info
+
+      - name: Run backend tests
+        run: ./mvnw --batch-mode test

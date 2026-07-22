@@ -1,0 +1,33 @@
+[
+  {
+    "name": "com.gtavi.monitoring.core.RetailerProductValidator",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.gtavi.monitoring.core.RetailerProductsExtractor",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.gtavi.monitoring.core.Normalizer",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.gtavi.monitoring.core.AiExtractionService",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.gtavi.monitoring.diff.DiffEngine",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "com.gtavi.notification.NotificationService",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true
+  }
+]

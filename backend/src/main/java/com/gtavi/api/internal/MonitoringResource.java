@@ -1,6 +1,7 @@
 package com.gtavi.api.internal;
 
 import com.gtavi.monitoring.core.MonitoringOrchestrator;
+import com.gtavi.notification.fcm.FcmHttpSender;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -22,6 +23,9 @@ public class MonitoringResource {
 
     @Inject
     MonitoringOrchestrator orchestrator;
+
+    @Inject
+    FcmHttpSender fcmSender;
 
     @ConfigProperty(name = "gtavi.internal.shared-secret")
     String sharedSecret;
@@ -77,6 +81,61 @@ public class MonitoringResource {
         return Response.ok(Map.of(
             "status", "ok",
             "message", "Internal monitoring API is operational"
+        )).build();
+    }
+
+    @POST
+    @Path("/test-notification")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response testNotification(
+        @HeaderParam("X-Internal-Secret") String secret,
+        Map<String, String> request
+    ) {
+        if (!isAuthorized(secret)) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                .entity(Map.of("error", "unauthorized"))
+                .build();
+        }
+
+        String token = request.get("pushToken");
+        String title = request.getOrDefault("title", "\uD83D\uDCE2 GTA VI Test Notification");
+        String body = request.getOrDefault("body", "This is a test notification from the GTA VI Waiting Room backend.");
+
+        if (token == null || token.isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(Map.of("error", "pushToken is required"))
+                .build();
+        }
+
+        if (!fcmSender.isEnabled()) {
+            return Response.ok(Map.of(
+                "status", "skipped",
+                "reason", "FCM not enabled or not initialized",
+                "fcmEnabled", fcmSender.isEnabled()
+            )).build();
+        }
+
+        String result = fcmSender.send(token, title, body, Map.of(
+            "test", "true",
+            "sentAt", java.time.Instant.now().toString()
+        ));
+
+        if (result == null) {
+            return Response.serverError()
+                .entity(Map.of("status", "failed", "error", "FCM send returned null — check server logs"))
+                .build();
+        }
+
+        if ("INVALID_TOKEN".equals(result)) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(Map.of("status", "invalid_token", "error", "FCM rejected the token"))
+                .build();
+        }
+
+        return Response.ok(Map.of(
+            "status", "sent",
+            "messageId", result,
+            "token", token.substring(0, 8) + "..."
         )).build();
     }
 

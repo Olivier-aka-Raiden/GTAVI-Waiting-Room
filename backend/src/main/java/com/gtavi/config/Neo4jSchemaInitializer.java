@@ -219,15 +219,16 @@ public class Neo4jSchemaInitializer {
                 s.createdAt = coalesce(s.createdAt, datetime()),
                 s.updatedAt = datetime()
             """);
+        // ROCKSTAR_EDITIONS removed — RockstarStoreMonitor handles editions + offers
         session.run("""
             MERGE (s:SourceDefinition {code: 'ROCKSTAR_EDITIONS'})
-            SET s.name = 'Rockstar GTA VI Editions',
-                s.url = 'https://www.rockstargames.com/VI/editions',
-                s.official = true,
-                s.enabled = true,
-                s.checkIntervalSeconds = 600,
-                s.priority = 1,
-                s.createdAt = coalesce(s.createdAt, datetime()),
+            SET s.enabled = false,
+                s.updatedAt = datetime()
+            """);
+        // GALAXUS removed — IP-blocked by Digitec Galaxus AG, no public API
+        session.run("""
+            MERGE (s:SourceDefinition {code: 'GALAXUS'})
+            SET s.enabled = false,
                 s.updatedAt = datetime()
             """);
         session.run("""
@@ -247,7 +248,6 @@ public class Neo4jSchemaInitializer {
                 {code: 'PS_STORE', name: 'PlayStation Store', url: 'https://store.playstation.com/en-ch/search/grand%20theft%20auto%20vi', official: true, interval: 1800, priority: 3},
                 {code: 'XBOX_STORE', name: 'Xbox Store', url: 'https://www.xbox.com/fr-ch/Search/Results?q=GTAVI', official: true, interval: 1800, priority: 3},
                 {code: 'ROCKSTAR_STORE', name: 'Rockstar Games Store', url: 'https://www.rockstargames.com/VI/editions', official: true, interval: 1800, priority: 3},
-                {code: 'GALAXUS', name: 'Galaxus', url: 'https://www.galaxus.ch/en/search?q=grand+theft+auto+vi', official: false, interval: 900, priority: 4},
                 {code: 'WOG', name: 'WOG.ch', url: 'https://www.wog.ch/fr/index.cfm/search/searchTerm/GTA%206/orderBy/relevance', official: false, interval: 1800, priority: 4},
                 {code: 'AMAZON_FR', name: 'Amazon.fr', url: 'https://www.amazon.fr/s?k=grand+theft+auto+vi', official: false, interval: 1800, priority: 4}
             ] AS definition

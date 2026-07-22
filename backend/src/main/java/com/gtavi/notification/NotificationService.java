@@ -1,6 +1,7 @@
 package com.gtavi.notification;
 
 import com.gtavi.domain.ChangeEvent;
+import com.gtavi.notification.fcm.FcmHttpSender;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -19,7 +20,7 @@ public class NotificationService {
     Driver driver;
 
     @Inject
-    FcmSender fcmSender;
+    FcmHttpSender fcmSender;
 
     private static final Map<String, String> EVENT_TITLE_TEMPLATES = Map.of(
         "COLLECTOR_EDITION_ANNOUNCED", "\uD83D\uDEA8 GTA VI Collector's Edition announced!",

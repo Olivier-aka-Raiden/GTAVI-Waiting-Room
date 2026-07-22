@@ -141,7 +141,7 @@ public class MonitoringOrchestrator {
             Log.warn("No GameSourceMonitor beans discovered via Instance<> injection. " +
                 "Verify monitors are @ApplicationScoped and in a scanned package.");
         } else if (monitors.isEmpty()) {
-            Log.debug("No monitoring sources are due for a check.");
+            // All sources were checked recently — nothing to do this cycle.
         }
         return monitors;
     }
@@ -395,15 +395,16 @@ public class MonitoringOrchestrator {
     private String matchEdition(String productName, List<String> editionIds) {
         String lower = productName.toLowerCase().replaceAll("[^a-z]", "");
         for (String id : editionIds) {
-            if (id.contains("standard") && lower.contains("standard")) return id;
-            if (id.contains("ultimate") && lower.contains("ultimate")) return id;
-            if (id.contains("collector") && lower.contains("collector")) return id;
-            if (id.contains("deluxe") && lower.contains("deluxe")) return id;
+            String lowerId = id.toLowerCase();
+            if (lowerId.contains("standard") && lower.contains("standard")) return id;
+            if (lowerId.contains("ultimate") && lower.contains("ultimate")) return id;
+            if (lowerId.contains("collector") && lower.contains("collector")) return id;
+            if (lowerId.contains("deluxe") && lower.contains("deluxe")) return id;
         }
         // Fallback: if product name contains no edition keyword, assume Standard
         if (!lower.contains("ultimate") && !lower.contains("collector")
             && !lower.contains("deluxe")) {
-            return editionIds.stream().filter(id -> id.contains("standard")).findFirst().orElse(null);
+            return editionIds.stream().filter(id -> id.toLowerCase().contains("standard")).findFirst().orElse(null);
         }
         return null;
     }

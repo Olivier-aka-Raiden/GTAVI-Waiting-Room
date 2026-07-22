@@ -13,10 +13,11 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Sends push notifications via Firebase Cloud Messaging.
- * Initializes Firebase Admin SDK on startup from config.
+ * Initializes Firebase Admin SDK from service account JSON (portable, works anywhere).
  */
 @ApplicationScoped
 public class FcmSender {
@@ -25,8 +26,9 @@ public class FcmSender {
     boolean enabled;
 
     @ConfigProperty(name = "gtavi.fcm.service-account-json")
-    java.util.Optional<String> serviceAccountJson;
+    Optional<String> serviceAccountJson;
 
+    private FirebaseMessaging messaging;
     private boolean initialized = false;
 
     @PostConstruct
@@ -48,11 +50,16 @@ public class FcmSender {
                     new ByteArrayInputStream(json.getBytes())))
                 .build();
 
+            // Only initialize if not already done (e.g. by Quarkiverse extension)
             if (FirebaseApp.getApps().isEmpty()) {
                 FirebaseApp.initializeApp(options);
             }
+
+            messaging = FirebaseMessaging.getInstance();
             initialized = true;
-            Log.info("Firebase Admin SDK initialized successfully");
+            Log.infof("FCM initialized from service account JSON for project: %s",
+                FirebaseApp.getInstance().getOptions().getProjectId());
+
         } catch (IOException e) {
             Log.error("Failed to initialize Firebase", e);
         }
@@ -90,8 +97,8 @@ public class FcmSender {
                 .setPriority(AndroidConfig.Priority.HIGH)
                 .build());
 
-            String messageId = FirebaseMessaging.getInstance().send(builder.build());
-            Log.debugf("FCM sent: %s → %s", title, token.substring(0, 8) + "...");
+            String messageId = messaging.send(builder.build());
+            Log.debugf("FCM sent: %s → %s...", title, token.substring(0, Math.min(8, token.length())));
             return messageId;
 
         } catch (FirebaseMessagingException e) {
@@ -101,7 +108,6 @@ public class FcmSender {
                 token.substring(0, Math.min(8, token.length())),
                 errorCode, e.getMessage());
 
-            // Return error code for token invalidation handling
             if ("UNREGISTERED".equals(errorCode) || "INVALID_ARGUMENT".equals(errorCode)) {
                 return "INVALID_TOKEN";
             }

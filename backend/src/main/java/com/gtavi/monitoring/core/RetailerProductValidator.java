@@ -19,11 +19,26 @@ import java.util.Set;
 @ApplicationScoped
 public class RetailerProductValidator {
 
-    private static final Set<String> EXCLUDED_PRODUCT_TERMS = Set.of(
-        "slowed", "explicit", "soundtrack", "song", "music", "album",
-        "mp3", "vinyl", "ebook", "novel", "guide", "poster", "shirt",
-        "t-shirt", "hoodie", "wallpaper", "skin", "sticker", "keychain"
+    // Non-game terms that suggest this is NOT a game listing
+    private static final Set<String> EXCLUDED_NON_GAME_TERMS = Set.of(
+        "soundtrack", "song", "music", "album", "mp3", "vinyl", "slowed", "explicit",
+        "ebook", "novel", "book", "guide", "poster", "shirt", "t-shirt",
+        "hoodie", "wallpaper", "skin", "sticker", "keychain"
     );
+
+    // Keywords that strongly suggest this is a game edition listing
+    private static final Set<String> EDITION_KEYWORDS = Set.of(
+        "standard", "ultimate", "collector", "deluxe", "special",
+        "bundle", "upgrade", "edition", "premium", "limited",
+        "steelbook", "gold", "starter", "complete"
+    );
+
+    // Platform keywords that suggest a game listing
+    private static final Set<String> PLATFORM_KEYWORDS = Set.of(
+        "ps5", "playstation", "xbox", "xsx", "seriesx", "seriess",
+        "pc", "steam", "epic"
+    );
+
     private static final Set<String> EDITIONS = Set.of(
         "STANDARD", "ULTIMATE", "COLLECTOR", "DELUXE", "UNKNOWN"
     );
@@ -58,9 +73,20 @@ public class RetailerProductValidator {
                 continue;
             }
 
+            // Platform is required — it's how we deduplicate listings per retailer
+            String aiPlatform = text(candidate, "platform");
+            String platform = normalizeEnum(aiPlatform, PLATFORMS, null);
+            if (platform == null) {
+                // Try to infer from the name if AI didn't provide a valid platform
+                platform = inferPlatform(name);
+            }
+            if (platform == null) {
+                Log.warnf("Rejected listing from %s without recognizable platform: %s", sourceCode, name);
+                continue;
+            }
+
             ObjectNode product = ((ObjectNode) candidate).deepCopy();
             String edition = normalizeEnum(text(candidate, "edition"), EDITIONS, inferEdition(name));
-            String platform = normalizeEnum(text(candidate, "platform"), PLATFORMS, "UNKNOWN");
             String availability = normalizeEnum(text(candidate, "availability"), AVAILABILITY, "UNKNOWN");
             String currency = normalizeEnum(text(candidate, "currency"), CURRENCIES, null);
 
@@ -86,20 +112,79 @@ public class RetailerProductValidator {
         return validated;
     }
 
+    /**
+     * Checks whether a product name is likely a GTA VI game listing.
+     * <p>
+     * Whitelist-first: accept if name mentions GTA VI, contains an edition keyword,
+     * or contains a platform keyword. Reject GTA V products (wrong game).
+     * Only reject if the name matches excluded non-game terms with no game indicators.
+     */
     static boolean isGtaViGameProduct(String name) {
         if (name == null || name.isBlank()) return false;
+
         String lower = name.toLowerCase(Locale.ROOT);
         String compact = lower.replaceAll("[^a-z0-9]", "");
 
+        // 1. Reject GTA V (the old game) unless it's actually GTA VI
+        if (isGtaVOnly(lower, compact)) return false;
+
+        // 2. Name explicitly mentions GTA VI → accept
         boolean mentionsGame = lower.contains("grand theft auto vi")
             || lower.contains("grand theft auto 6")
             || lower.contains("gta vi")
             || lower.contains("gta 6")
             || compact.contains("gtavi")
             || compact.contains("gta6");
-        if (!mentionsGame) return false;
+        if (mentionsGame) return true;
 
-        return EXCLUDED_PRODUCT_TERMS.stream().noneMatch(lower::contains);
+        // 3. Name contains an edition keyword → accept
+        for (String keyword : EDITION_KEYWORDS) {
+            if (compact.contains(keyword)) return true;
+        }
+
+        // 4. Name contains a platform keyword → accept (game listing signal)
+        for (String keyword : PLATFORM_KEYWORDS) {
+            if (compact.contains(keyword)) return true;
+        }
+
+        // 5. Only reject if it matches excluded non-game terms with no game signals
+        return EXCLUDED_NON_GAME_TERMS.stream().noneMatch(compact::contains);
+    }
+
+    /**
+     * Checks if the name refers to GTA V (not VI). Example: "GTA V Premium Edition"
+     * should be rejected even though "premium" is an edition keyword.
+     */
+    private static boolean isGtaVOnly(String lower, String compact) {
+        boolean mentionsGtaV = lower.contains("grand theft auto v")
+            || lower.contains("gta v")
+            || compact.contains("gtav");
+        boolean mentionsGtaVI = lower.contains("grand theft auto vi")
+            || lower.contains("grand theft auto 6")
+            || lower.contains("gta vi")
+            || lower.contains("gta 6")
+            || compact.contains("gtavi")
+            || compact.contains("gta6");
+
+        return mentionsGtaV && !mentionsGtaVI;
+    }
+
+    /**
+     * Infer platform from product name when the AI doesn't provide one.
+     */
+    private static String inferPlatform(String name) {
+        if (name == null) return null;
+        String lower = name.toLowerCase(Locale.ROOT);
+        String compact = lower.replaceAll("[^a-z0-9]", "");
+
+        if (compact.contains("ps5") || lower.contains("playstation")) return "PS5";
+        if (compact.contains("xsx") || compact.contains("xboxseriesx")
+            || compact.contains("xboxseriess") || lower.contains("xbox series")
+            || lower.contains("xbox")) return "XSX";
+        if (compact.contains("pc") || compact.contains("steam")
+            || compact.contains("epic")) return "PC";
+
+        return null;
     }
 
     static String normalizeUrl(String sourceUrl, String candidateUrl) {

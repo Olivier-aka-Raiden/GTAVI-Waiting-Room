@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import type { Trailer } from '../../types/game';
 
 /** Extract YouTube video ID from URL like https://www.youtube.com/watch?v=QdBZY2fkU-0 */
@@ -11,6 +11,13 @@ function youtubeId(url: string): string | null {
   return null;
 }
 
+function sendYouTubeCommand(iframe: HTMLIFrameElement | null, command: string) {
+  iframe?.contentWindow?.postMessage(
+    JSON.stringify({ event: 'command', func: command, args: '' }),
+    '*'
+  );
+}
+
 interface Props {
   trailers: Trailer[];
   latestTrailer: Trailer | null;
@@ -18,9 +25,10 @@ interface Props {
 
 export function TrailerCarousel({ trailers, latestTrailer }: Props) {
   const [active, setActive] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [playing, setPlaying] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Put the latest trailer first if available
   const ordered = latestTrailer && trailers.length > 0
@@ -40,17 +48,22 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
     return pubDate > Date.now() - 7 * 24 * 60 * 60 * 1000;
   };
 
-  const goPrev = () => {
-    setIsPlaying(false);
-    setActive(a => (a === 0 ? ordered.length - 1 : a - 1));
-  };
-  const goNext = () => {
-    setIsPlaying(false);
-    setActive(a => (a === ordered.length - 1 ? 0 : a + 1));
-  };
-  const goTo = (i: number) => {
-    setIsPlaying(false);
-    setActive(i);
+  const stopVideo = useCallback(() => {
+    setPlaying(false);
+    sendYouTubeCommand(iframeRef.current, 'pauseVideo');
+  }, []);
+
+  const goPrev = () => { stopVideo(); setActive(a => (a === 0 ? ordered.length - 1 : a - 1)); };
+  const goNext = () => { stopVideo(); setActive(a => (a === ordered.length - 1 ? 0 : a + 1)); };
+  const goTo = (i: number) => { stopVideo(); setActive(i); };
+
+  const handlePlay = () => {
+    setPlaying(true);
+    if (iframeRef.current) {
+      // If iframe is already loaded, send play command.
+      // If not yet loaded (first mount), autoplay=1 in src handles it.
+      sendYouTubeCommand(iframeRef.current, 'playVideo');
+    }
   };
 
   // Touch swipe handlers
@@ -62,7 +75,6 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
   const onTouchEnd = (e: React.TouchEvent) => {
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
-    // Only trigger if horizontal swipe dominates (more horizontal than vertical)
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
       if (dx > 0) goPrev();
       else goNext();
@@ -87,37 +99,43 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
         onTouchEnd={onTouchEnd}
       >
         <div className="aspect-video">
-          {videoId && isPlaying ? (
-            <iframe
-              src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
-              title={current.title}
-              allow="accelerometer; encrypted-media; picture-in-picture"
-              allowFullScreen
-              className="w-full h-full"
-              loading="lazy"
-            />
-          ) : videoId ? (
-            <button
-              type="button"
-              onClick={() => setIsPlaying(true)}
-              className="relative block w-full h-full group"
-              aria-label={`Play ${current.title}`}
-            >
-              <img
-                src={current.thumbnailUrl || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
-                alt=""
-                width="1280"
-                height="720"
-                loading="lazy"
-                decoding="async"
-                className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity"
+          {videoId ? (
+            <>
+              {/* Always mount the iframe so it's ready; autoplay is handled by the
+                  play button click or postMessage command — never blocked by the
+                  browser because the iframe was already in the DOM during the click. */}
+              <iframe
+                ref={iframeRef}
+                src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+                title={current.title}
+                allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
+                className={`w-full h-full ${playing ? '' : 'hidden'}`}
               />
-              <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
-                <span className="w-16 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center text-2xl shadow-lg group-hover:scale-105 transition-transform">
-                  ▶
-                </span>
-              </span>
-            </button>
+              {!playing && (
+                <button
+                  type="button"
+                  onClick={handlePlay}
+                  className="absolute inset-0 block w-full h-full group"
+                  aria-label={`Play ${current.title}`}
+                >
+                  <img
+                    src={current.thumbnailUrl || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
+                    alt=""
+                    width="1280"
+                    height="720"
+                    loading="lazy"
+                    decoding="async"
+                    className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+                    <span className="w-16 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center text-2xl shadow-lg group-hover:scale-105 transition-transform">
+                      ▶
+                    </span>
+                  </span>
+                </button>
+              )}
+            </>
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-bg-primary/80 text-text-muted">
               <div className="text-center">

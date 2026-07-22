@@ -30,7 +30,7 @@ class GameResourceTest {
             .body("editions", hasSize(greaterThanOrEqualTo(2)))
             .body("latestEvents", hasSize(greaterThanOrEqualTo(1)))
             .body("systemStatus", notNullValue())
-            .body("systemStatus.monitoredSources", equalTo(10))
+            .body("systemStatus.monitoredSources", equalTo(8))
             .body("systemStatus.healthySources", equalTo(0))
             .body("systemStatus.monitoringHealthy", equalTo(false));
     }

@@ -1,13 +1,17 @@
 package com.gtavi.monitoring.core;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.Instant;
+
+import static com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility.ANY;
 
 /**
  * Result of a single source monitoring check.
  * Contains the normalized data, hash, status, and any error.
  */
+@JsonAutoDetect(fieldVisibility = ANY)
 public record MonitorResult(
     String sourceCode,
     String sourceUrl,
