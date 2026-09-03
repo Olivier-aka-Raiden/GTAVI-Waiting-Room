@@ -1,4 +1,11 @@
 services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: gtavi-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
   gtavi-api:
     build:
       context: .
@@ -8,4 +15,7 @@ services:
       - "8080:8080"
     environment:
       - JAVA_OPTS=-XX:MaxRAMPercentage=75.0
+      - UPSTASH_REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
     restart: unless-stopped

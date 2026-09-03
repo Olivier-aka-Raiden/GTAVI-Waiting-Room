@@ -5,7 +5,7 @@ import java.util.UUID;
 
 /**
  * An edition of the game (Standard, Ultimate, Collector, etc.).
- * Stored as Neo4j node with label :Edition.
+ * Stored as a JSON record in Upstash Redis.
  */
 public class Edition {
 
@@ -51,3 +51,4 @@ public class Edition {
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
 }
+

@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.*;
 
 /**
  * Integration test for the Game REST API.
- * Uses Neo4j DevServices — a container is auto-started by quarkus-neo4j.
+ * Uses Redis Dev Services — a container is auto-started by quarkus-redis-client.
  */
 @QuarkusTest
 class GameResourceTest {
@@ -115,3 +115,4 @@ class GameResourceTest {
         assert firstTitle.contains("Trailer 2") : "Expected Trailer 2 first, got: " + firstTitle;
     }
 }
+

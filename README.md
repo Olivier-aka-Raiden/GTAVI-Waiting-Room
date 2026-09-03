@@ -2,7 +2,7 @@
 
 > **Live countdown. Official trailers. Edition tracking. Collector's Edition watch. Push notifications when it matters.**
 
-A mobile-first React PWA with a Quarkus/Neo4j backend that tracks official GTA VI release information and sends web push notifications when meaningful changes occur.
+A mobile-first React PWA with a Quarkus/Upstash Redis backend that tracks official GTA VI release information and sends web push notifications when meaningful changes occur.
 
 ---
 
@@ -13,8 +13,8 @@ A mobile-first React PWA with a Quarkus/Neo4j backend that tracks official GTA V
 | **Frontend** | React 19 + TypeScript + Vite + Tailwind CSS v4 | Matches radar-app stack; free Vercel hosting |
 | **Mobile** | Installable PWA | Manifest, offline app shell, and Firebase web push. Capacitor is a future option |
 | **Backend** | Quarkus 3.37 + REST + LangChain4j | Java 26 service with AI-assisted extraction |
-| **Database** | **Neo4j** (not PostgreSQL) | Existing expertise; graph model fits domain; free AuraDB tier |
-| **State and snapshots** | **Neo4j** | Current implementation. A separate cache is not implemented yet |
+| **Database** | **Upstash Redis** | Managed, TLS-secured Redis with a Vercel integration |
+| **State and snapshots** | **Upstash Redis** | JSON records plus sets and sorted sets for durable indexes |
 | **Push** | Firebase Cloud Messaging | Only viable native push; generous free tier |
 | **Frontend hosting** | **Vercel** | Free; existing fawzz-tv pattern |
 | **Backend hosting** | Google Cloud Run | Free tier (2M req/month); existing radar-app pattern |
@@ -23,11 +23,11 @@ A mobile-first React PWA with a Quarkus/Neo4j backend that tracks official GTA V
 
 ### Key changes from original spec
 
-1. **Neo4j instead of PostgreSQL** — Your existing stack. The domain is naturally graph-shaped: Games → Editions → Retailers → Offers, Events linked to Sources, Devices with Preferences. Free AuraDB tier handles MVP scale.
+1. **Upstash Redis persistence** — Games, editions, offers, events, snapshots, devices, preferences, and notification deliveries use namespaced JSON records. Sets and sorted sets provide deterministic lookups and chronological ordering.
 
 2. **AI-assisted extraction with deterministic validation** - LangChain4j proposes structured candidates from fetched pages. Business validation rejects irrelevant retailer products, invalid enums, and unsafe URLs before data reaches snapshots, diffs, offers, or notifications.
 
-3. **Neo4j-backed snapshots and scheduling** - source snapshots, intervals, events, offers, devices, and preferences currently live in Neo4j. Rate limiting and conditional HTTP caching remain planned work.
+3. **Redis-backed snapshots and scheduling** - source snapshots, intervals, events, offers, devices, and preferences live in Upstash. Rate limiting and conditional HTTP caching remain planned work.
 
 4. **Vercel** for frontend (matching fawzz-tv-app deployment).
 
@@ -59,8 +59,8 @@ A mobile-first React PWA with a Quarkus/Neo4j backend that tracks official GTA V
                  ┌─────┴──────────────────┐
                  ▼                         ▼
            ┌─────────┐               ┌──────────┐
-           │  Neo4j  │               │ External │
-           │ AuraDB  │               │ Sources  │
+           │ Upstash │               │ External │
+           │  Redis  │               │ Sources  │
            └─────────┘               └──────────┘
 ```
 
@@ -120,7 +120,7 @@ The app uses **LangChain4j + DeepSeek** with typed DTOs for candidate extraction
 - Ordinary retailer listings appear as `RETAIL` events without a major-news push. Collector listings remain critical. Price changes, out-of-stock changes, and back-in-stock changes follow the matching user preferences.
 - Change events are merged by deduplication key before FCM delivery, so replaying the same source state does not resend the event.
 - Every monitor honors its own interval even though Cloud Scheduler can trigger the orchestration endpoint every ten minutes.
-- Monitoring health is based on the latest result from all ten enabled sources. A stale or failed source makes the public status degraded.
+- Monitoring health is based on the latest result from all enabled sources. A stale or failed source makes the public status degraded.
 - Offers are separated by retailer, edition, and platform. Legacy relative URLs are resolved against the retailer domain, and offers missing from repeated checks become inactive.
 - Disabling notifications updates the backend eligibility flag. Re-registering the same FCM token deactivates older installations to avoid duplicate delivery.
 - The frontend is an installable PWA with an app-shell service worker. Firebase messaging uses a separate worker scope so push registration does not replace offline support.
@@ -138,7 +138,8 @@ GTAVI-Waiting-Room/
 │   ├── pom.xml
 │   ├── src/main/java/com/gtavi/
 │   │   ├── api/               # REST endpoints
-│   │   ├── domain/            # Domain model (Neo4j nodes)
+│   │   ├── domain/            # Domain model (Redis JSON records)
+│   │   ├── persistence/       # Upstash Redis records and indexes
 │   │   ├── monitoring/        # AI-powered source monitors
 │   │   ├── notification/      # FCM push sender
 │   │   └── config/            # Quarkus config
@@ -160,7 +161,7 @@ GTAVI-Waiting-Room/
 
 ## Quick Start
 
-Requirements: Java 26, Maven or the included Maven wrapper, Node.js 22, npm, and Neo4j 5 or 6.
+Requirements: Java 26, Maven or the included Maven wrapper, Node.js 22, npm, and Redis 7 for local development.
 
 ```bash
 # Backend
@@ -172,11 +173,14 @@ cd frontend
 npm ci
 npm run dev
 
-# Local Neo4j
-docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/password neo4j:5
+# Local Redis
+docker run -d --name gtavi-redis -p 6379:6379 redis:7.4-alpine
 
 ```
+
+Production requires `UPSTASH_REDIS_URL`, copied exactly from Upstash's TCP/TLS connection dialog. The value starts with `rediss://`. Set it on the service running the Quarkus backend; secrets configured for the Vercel frontend are not automatically visible to Cloud Run.
+
+For the one-time Neo4j data transfer and production cutover, follow [docs/upstash-migration.md](./docs/upstash-migration.md).
 
 ---
 
@@ -184,7 +188,7 @@ docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
 
 | Service | Free Tier | Sufficient? |
 |---------|-----------|-------------|
-| **Neo4j AuraDB** | 50k nodes, 175k relationships | ✓ MVP |
+| **Upstash Redis** | Managed Redis with a free tier | ✓ MVP; confirm current storage/command limits |
 | **Cloud Run** | 2M req/month, 360K GB-sec | ✓ |
 | **Cloud Scheduler** | 3 jobs free | ✓ |
 | **FCM** | Unlimited | ✓ |
@@ -199,7 +203,7 @@ docker run -d --name neo4j -p 7474:7474 -p 7687:7687 \
 
 | Milestone | What | Status |
 |-----------|------|--------|
-| **A** | Read-only app: Quarkus + Neo4j + React + Countdown + Trailers + Editions | ✅ Done |
+| **A** | Read-only app: Quarkus + Upstash Redis + React + Countdown + Trailers + Editions | ✅ Done |
 | **B** | AI monitoring: LLM-powered source extraction, semantic diff, events | ✅ Done |
 | **C** | Push notifications: FCM, device registration, preferences, deep links | ✅ Done |
 | **D** | Retail monitoring: AI-powered retailer scraping, availability tracking | ✅ Done |

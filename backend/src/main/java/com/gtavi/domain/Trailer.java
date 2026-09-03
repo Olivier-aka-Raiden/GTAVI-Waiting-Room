@@ -5,7 +5,7 @@ import java.util.UUID;
 
 /**
  * Official trailer or video for the game.
- * Stored as Neo4j node with label :Trailer.
+ * Stored as a JSON record in Upstash Redis.
  */
 public class Trailer {
 
@@ -54,3 +54,4 @@ public class Trailer {
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
 }
+

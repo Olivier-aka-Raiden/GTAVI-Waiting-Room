@@ -22,13 +22,7 @@ export ARTIFACT_REPO="gtavi"                       # Artifact Registry repo
 echo "sk-your-deepseek-key" | gcloud secrets create DEEPSEEK_API_KEY \
   --data-file=- --project=$GCP_PROJECT
 
-echo "neo4j+s://xxxxxxxx.databases.neo4j.io" | gcloud secrets create NEO4J_URI \
-  --data-file=- --project=$GCP_PROJECT
-
-echo "neo4j" | gcloud secrets create NEO4J_USERNAME \
-  --data-file=- --project=$GCP_PROJECT
-
-echo "your-aura-db-password" | gcloud secrets create NEO4J_PASSWORD \
+printf '%s' 'rediss://default:your-token@your-database.upstash.io:6379' | gcloud secrets create UPSTASH_REDIS_URL \
   --data-file=- --project=$GCP_PROJECT
 
 # Generate and store the shared secret for /internal/* endpoints
@@ -74,10 +68,9 @@ gcloud run deploy $SERVICE_NAME \
   --set-env-vars="FCM_ENABLED=false" \
   --set-env-vars="DEEPSEEK_BASE_URL=https://api.deepseek.com" \
   --set-env-vars="DEEPSEEK_MODEL=deepseek-v4-pro" \
+  --set-env-vars="GTAVI_REDIS_KEY_PREFIX=gtavi:v1" \
   --set-secrets="DEEPSEEK_API_KEY=DEEPSEEK_API_KEY:latest" \
-  --set-secrets="NEO4J_URI=NEO4J_URI:latest" \
-  --set-secrets="NEO4J_USERNAME=NEO4J_USERNAME:latest" \
-  --set-secrets="NEO4J_PASSWORD=NEO4J_PASSWORD:latest" \
+  --set-secrets="UPSTASH_REDIS_URL=UPSTASH_REDIS_URL:latest" \
   --set-secrets="INTERNAL_SHARED_SECRET=INTERNAL_SHARED_SECRET:latest"
 
 # Grab the deployed URL

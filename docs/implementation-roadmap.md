@@ -28,7 +28,7 @@ Scope status for this pull request:
 |---|---|---|---|
 | P0 | Stop noisy listing alerts | Classify ordinary retailer listings as `RETAIL` and keep them out of push notifications | Only collector listings or user-selected price and stock transitions generate retail pushes |
 | P0 | Detect meaningful retail changes | Compare price and availability for stable product identities | `PRICE_CHANGED`, `OUT_OF_STOCK`, and `BACK_IN_STOCK` events contain old value, new value, retailer name, and product evidence URL |
-| P0 | Deduplicate before push | Send only when the Neo4j event merge created a new event | Repeating the same snapshot never sends a second push |
+| P0 | Deduplicate before push | Reserve each event deduplication key in Redis before saving or notifying | Repeating the same snapshot never sends a second push |
 | P1 | Introduce a notification outbox | Write an `OutboxMessage` in the same transaction as the event, process it with retries, and add a unique constraint on event plus installation | Partial FCM failures retry safely and do not skip devices or resend to successful devices |
 | P1 | Add delivery observability | Record queued, sent, failed, invalid-token, and retry states with latency counters | Delivery success and retry backlog are visible in metrics |
 
@@ -38,9 +38,9 @@ Scope status for this pull request:
 |---|---|---|---|
 | P0 | Honor source intervals | Select only monitors whose latest snapshot is older than their configured interval | A 10-minute scheduler trigger does not call 30-minute sources every time |
 | P0 | Close the internal API bypass | Require the configured secret in every profile and compare it safely | Missing and wrong secrets return 401 in tests and production cannot start without a secret |
-| P0 | Report real system health | Evaluate the latest result for all ten enabled sources and flag stale checks after two hours | One recent successful source cannot make a failing system look healthy |
-| P1 | Prevent overlapping runs | Acquire a short Neo4j lease keyed by monitoring job before fetching | Two scheduler invocations cannot process the same sources concurrently |
-| P1 | Add retention jobs | Keep full snapshots for 30 days, then retain daily hashes and all events | Neo4j storage stays bounded without losing audit history |
+| P0 | Report real system health | Evaluate the latest result for every enabled source and flag stale checks after two hours | One recent successful source cannot make a failing system look healthy |
+| P1 | Prevent overlapping runs | Acquire a short Redis lease keyed by monitoring job before fetching | Two scheduler invocations cannot process the same sources concurrently |
+| P1 | Add retention jobs | Keep full snapshots for 30 days, then retain daily hashes and all events | Upstash storage stays bounded without losing audit history |
 
 ### A4. Frontend correctness, performance, and accessibility
 
@@ -56,8 +56,8 @@ Scope status for this pull request:
 ### A5. Delivery sequence
 
 1. Run CI on Java 26 and Node 22.
-2. Back up the production Neo4j database.
-3. Deploy the backend first so seed corrections and URL normalization apply before the new frontend reads them.
+2. Back up Neo4j, dry-run the migration, import to Upstash, and verify the migrated record counts.
+3. Deploy the Redis-backed backend first so seed corrections and URL normalization apply before the frontend reads it.
 4. Trigger one source at a time and inspect accepted products, rejected products, generated events, and notification eligibility.
 5. Deploy the frontend and smoke test navigation, sharing, notification permission, offline reload, and every retailer link on mobile and desktop.
 6. Observe two complete monitoring cycles before enabling FCM for all installations.

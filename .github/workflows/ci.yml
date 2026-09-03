@@ -42,9 +42,10 @@ jobs:
           cache: maven
           cache-dependency-path: backend/pom.xml
 
-      # Testcontainers needs Docker for Neo4j DevServices
+      # Testcontainers needs Docker for Redis Dev Services
       - name: Verify Docker
         run: docker info
 
       - name: Run backend tests
         run: ./mvnw --batch-mode test
+

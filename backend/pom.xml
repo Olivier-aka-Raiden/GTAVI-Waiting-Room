@@ -55,11 +55,10 @@
             <artifactId>quarkus-arc</artifactId>
         </dependency>
 
-        <!-- Neo4j -->
+        <!-- Upstash Redis persistence -->
         <dependency>
-            <groupId>io.quarkiverse.neo4j</groupId>
-            <artifactId>quarkus-neo4j</artifactId>
-            <version>6.7.0</version>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-redis-client</artifactId>
         </dependency>
 
         <!-- LangChain4j (AI-powered scraping) -->

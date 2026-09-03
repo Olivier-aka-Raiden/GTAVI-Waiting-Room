@@ -1,10 +1,10 @@
 package com.gtavi.api.publicapi;
 
+import com.gtavi.persistence.RedisPersistence;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
-import org.neo4j.driver.Driver;
 
 import java.util.Map;
 
@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 class DeviceResourceTest {
 
     @Inject
-    Driver driver;
+    RedisPersistence persistence;
 
     @Test
     void disablingNotificationsUpdatesServerEligibility() {
@@ -38,13 +38,6 @@ class DeviceResourceTest {
             .when().put("/api/v1/devices/" + installationId)
             .then().statusCode(200);
 
-        try (var session = driver.session()) {
-            boolean enabled = session.run("""
-                MATCH (d:DeviceInstallation {installationId: $id})
-                RETURN d.notificationsEnabled AS enabled
-                """, Map.of("id", installationId))
-                .single().get("enabled").asBoolean();
-            assertFalse(enabled);
-        }
+        assertFalse(persistence.isDeviceNotificationsEnabled(installationId));
     }
 }

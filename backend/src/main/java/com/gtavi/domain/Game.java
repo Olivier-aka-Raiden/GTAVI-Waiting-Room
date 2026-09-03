@@ -5,7 +5,7 @@ import java.time.OffsetDateTime;
 
 /**
  * Represents a game tracked by the app. Currently only GTA_VI.
- * Stored as a Neo4j node with label :Game.
+ * Stored as a JSON record in Upstash Redis.
  */
 public class Game {
 

@@ -46,6 +46,8 @@ ios/
 # Firebase (generated from template at build time)
 google-services.json
 GoogleService-Info.plist
+backend/*firebase-adminsdk*.json
+backend/firebase-service-account.json
 frontend/public/firebase-messaging-sw.js
 
 # Test
@@ -57,3 +59,4 @@ dist/
 # Misc
 .cache/
 .hermes/
+

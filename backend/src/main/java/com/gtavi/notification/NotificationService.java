@@ -2,12 +2,13 @@ package com.gtavi.notification;
 
 import com.gtavi.domain.ChangeEvent;
 import com.gtavi.notification.fcm.FcmHttpSender;
+import com.gtavi.persistence.RedisPersistence;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.neo4j.driver.Driver;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Maps ChangeEvents to push notifications, respects device preferences,
@@ -17,7 +18,7 @@ import java.util.*;
 public class NotificationService {
 
     @Inject
-    Driver driver;
+    RedisPersistence persistence;
 
     @Inject
     FcmHttpSender fcmSender;
@@ -31,85 +32,45 @@ public class NotificationService {
         "PREORDER_OPENED", "\uD83D\uDED2 GTA VI pre-orders are now available"
     );
 
-    /**
-     * Send notifications for a change event to all eligible devices.
-     */
     public int sendNotifications(ChangeEvent event) {
         if (!event.isNotificationEligible()) {
             Log.debugf("Event %s not notification-eligible", event.getEventType());
             return 0;
         }
 
-        String title = EVENT_TITLE_TEMPLATES.getOrDefault(
-            event.getEventType(), event.getTitle());
+        String title = EVENT_TITLE_TEMPLATES.getOrDefault(event.getEventType(), event.getTitle());
         String body = event.getDescription() != null ? event.getDescription() : "";
 
-        // Dedup check
-        if (isAlreadyDelivered(event.getId())) {
+        if (persistence.isEventAlreadyDelivered(event.getId())) {
             Log.debugf("Event %s already delivered, skipping", event.getDeduplicationKey());
             return 0;
         }
 
-        // Find eligible devices
-        List<DeviceToken> devices = getEligibleDevices(event.getEventType());
+        String preferenceField = eventTypeToPreferenceField(event.getEventType());
+        if (preferenceField == null) return 0;
+        List<RedisPersistence.DeviceTokenRecord> devices =
+            persistence.getEligibleDevices(preferenceField);
 
         int sent = 0;
-        for (DeviceToken device : devices) {
-            // Build deep link data
+        for (var device : devices) {
             Map<String, String> data = Map.of(
                 "eventId", event.getId(),
                 "eventType", event.getEventType(),
                 "priority", event.getPriority()
             );
 
-            String result = fcmSender.send(device.token, title, body, data);
-
+            String result = fcmSender.send(device.token(), title, body, data);
             if ("INVALID_TOKEN".equals(result)) {
-                deactivateDevice(device.installationId);
-                Log.infof("Deactivated device with invalid token: %s", device.installationId);
+                persistence.deactivateDevice(device.installationId());
+                Log.infof("Deactivated device with invalid token: %s", device.installationId());
             } else if (result != null && !"disabled".equals(result)) {
-                recordDelivery(event.getId(), device.installationId, result);
+                persistence.recordDelivery(event.getId(), device.installationId(), result);
                 sent++;
             }
         }
 
         Log.infof("Sent %d notifications for event: %s", sent, event.getEventType());
         return sent;
-    }
-
-    private boolean isAlreadyDelivered(String eventId) {
-        try (var session = driver.session()) {
-            var result = session.run(
-                "MATCH (nd:NotificationDelivery {changeEventId: $eventId}) RETURN count(nd) > 0 AS exists",
-                Map.of("eventId", eventId)
-            );
-            return result.single().get("exists").asBoolean();
-        }
-    }
-
-    private List<DeviceToken> getEligibleDevices(String eventType) {
-        String prefField = eventTypeToPreferenceField(eventType);
-        if (prefField == null) return List.of();
-
-        try (var session = driver.session()) {
-            var result = session.run("""
-                MATCH (d:DeviceInstallation {active: true, notificationsEnabled: true})
-                OPTIONAL MATCH (d)-[:HAS_PREFERENCES]->(np:NotificationPreference)
-                WHERE np IS NULL OR np.`%s` = true
-                RETURN d.installationId AS installationId, d.pushToken AS token
-                """.formatted(prefField));
-
-            List<DeviceToken> devices = new ArrayList<>();
-            while (result.hasNext()) {
-                var record = result.next();
-                String token = record.get("token").asString();
-                if (token != null && !token.isEmpty()) {
-                    devices.add(new DeviceToken(
-                        record.get("installationId").asString(), token));
-                }
-            }
-            return devices;
-        }
     }
 
     private String eventTypeToPreferenceField(String eventType) {
@@ -128,30 +89,4 @@ public class NotificationService {
             default -> null;
         };
     }
-
-    private void deactivateDevice(String installationId) {
-        try (var session = driver.session()) {
-            session.run(
-                "MATCH (d:DeviceInstallation {installationId: $id}) SET d.active = false",
-                Map.of("id", installationId));
-        }
-    }
-
-    private void recordDelivery(String eventId, String installationId, String messageId) {
-        try (var session = driver.session()) {
-            session.run("""
-                CREATE (nd:NotificationDelivery {
-                    changeEventId: $eventId,
-                    deviceInstallationId: $installationId,
-                    providerMessageId: $messageId,
-                    status: 'SENT',
-                    sentAt: datetime(),
-                    createdAt: datetime()
-                })
-                """, Map.of("eventId", eventId, "installationId", installationId,
-                    "messageId", messageId));
-        }
-    }
-
-    record DeviceToken(String installationId, String token) {}
 }

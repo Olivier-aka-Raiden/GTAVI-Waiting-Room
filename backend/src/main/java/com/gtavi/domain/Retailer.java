@@ -4,7 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * A retailer selling GTA VI. Stored as Neo4j node with label :Retailer.
+ * A retailer selling GTA VI. Stored as a JSON record in Upstash Redis.
  */
 public class Retailer {
 
@@ -41,3 +41,4 @@ public class Retailer {
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
 }
+

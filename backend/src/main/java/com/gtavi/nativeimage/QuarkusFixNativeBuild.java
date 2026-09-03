@@ -22,10 +22,13 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 
 /**
  * Registers domain/DTO classes for native image reflection (Jackson serialization).
- * Quarkus extensions handle their own native image config (Neo4j, Firebase, etc).
+ * Quarkus extensions handle their own native image config (Redis, Firebase, etc).
  *
  * Public classes use class literals; package-private classes use
  * string classNames to bypass Java access checks at compile time.
+ * Do not enable RegisterForReflection.serialization here: that mode is for
+ * Java object serialization and does not retain the methods and fields that
+ * Jackson needs when serializing Redis JSON records.
  */
 @RegisterForReflection(
     targets = {
@@ -59,10 +62,9 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         GameService.MonitoringHealth.class,
     },
     classNames = {
-        // Package-private Neo4j/Google internals that need reflection
+        // Package-private Google internals that need reflection
         "com.google.common.util.concurrent.AbstractFuture$Waiter",
-    },
-    serialization = true
+    }
 )
 public class QuarkusFixNativeBuild {
 }

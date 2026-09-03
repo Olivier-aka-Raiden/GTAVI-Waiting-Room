@@ -6,7 +6,7 @@ import java.util.UUID;
 
 /**
  * An offer from a specific retailer for a specific edition.
- * Stored as Neo4j node with label :RetailOffer.
+ * Stored as a JSON record in Upstash Redis.
  */
 public class RetailOffer {
 
@@ -61,3 +61,4 @@ public class RetailOffer {
     public OffsetDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
 }
+

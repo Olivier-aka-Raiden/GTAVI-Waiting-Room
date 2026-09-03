@@ -1,23 +1,24 @@
 # Technology Decisions
 
-## Why Neo4j instead of PostgreSQL
+## Why Upstash Redis instead of Neo4j or PostgreSQL
 
-The original spec calls for PostgreSQL + Hibernate ORM Panache + Flyway. We use Neo4j instead.
+The application uses Upstash Redis as its system of record through Quarkus's `quarkus-redis-client` extension.
 
 **Reasons:**
-1. **Existing expertise** — radar-app already uses Neo4j (quarkus-neo4j 6.7.0), so there's zero learning curve.
-2. **Domain fits graph model** — Games → Editions → Retailers → Offers, Events → Sources, Devices → Preferences. These are all connected entities best expressed as a graph.
-3. **Free tier sufficient** — Neo4j AuraDB free: 50K nodes, 175K relationships. MVP needs ~100-500 nodes.
-4. **JSON support** — Neo4j nodes can store JSON properties (snapshots, normalized data).
+1. **Deployment fit** — Upstash integrates with Vercel and is reachable securely from the Quarkus backend through a TLS Redis URL.
+2. **Workload fit** — the app primarily reads and writes objects by stable identifiers and orders events/snapshots by time; JSON records, sets, and sorted sets cover those access patterns directly.
+3. **One persistence service** — games, offers, monitoring state, devices, preferences, and delivery records share one namespaced store.
+4. **Portable commands** — the implementation uses core Redis string, set, hash, and sorted-set commands rather than optional modules.
 
 **Trade-offs:**
-- No Flyway migrations → use `@Startup` init scripts + constraints
-- No Panache repositories → use direct Cypher via Neo4j driver
-- Less natural for "rows and columns" queries → but the app is relationship-heavy
+- Redis has no graph query planner; every supported lookup requires an explicit index key.
+- Cross-key writes are not automatically relational, so idempotent writes and repairable indexes are used.
+- Monitoring snapshots accumulate and require quota monitoring plus a future retention policy.
+- Upstash eviction must remain disabled because the database is not merely a cache.
 
 **Alternatives considered:**
-- PostgreSQL: spec default, but adds a new DB to manage
-- MongoDB: document model is nice for snapshots but loses relationships
+- Neo4j: expressive graph queries, but more operational surface than this access pattern needs.
+- PostgreSQL: strong relational constraints and ad-hoc queries, but requires a separate managed database and schema migration layer.
 
 ---
 
@@ -81,19 +82,9 @@ This is cheaper than developer time fixing broken selectors.
 
 ---
 
-## Planned cache layer
+## Cache and coordination
 
-A separate cache is not currently implemented. Neo4j stores source snapshots and scheduling state. A future cache could provide:
-1. **Snapshot cache** — latest normalized state per source, for fast hash comparison
-2. **Rate limiting** — prevent duplicate monitoring runs
-3. **HTTP ETag cache** — store ETags per source URL for conditional requests
-
-Upstash Redis is one candidate, but it should only be added after measuring Neo4j latency and monitoring overlap in production.
-
-**Alternatives considered:**
-- Redis on Cloud Run: no free tier, adds cost
-- In-memory cache: lost on scale-to-zero, doesn't survive restarts
-- Neo4j for caching: works but adds latency for simple key-value lookups
+Upstash is currently the durable store, not a disposable cache. Future rate-limit leases, HTTP ETags, and monitoring-run locks can use separate keys with explicit TTLs. Durable entity and index keys do not receive TTLs.
 
 ---
 
@@ -127,8 +118,7 @@ This is the ONE genuinely new service added beyond the user's existing stack, an
 
 | Service | Free Tier | Est. MVP Usage | Cost |
 |---------|-----------|---------------|------|
-| Neo4j AuraDB Free | 50K nodes | ~200 nodes | $0 |
-| Optional Upstash Redis | Not currently used | Add only if metrics justify it | $0 at MVP limits |
+| Upstash Redis | Managed free tier | MVP records and snapshots | $0 while within current limits |
 | Cloud Run Free | 2M req/month | ~10K req/month | $0 |
 | Cloud Scheduler Free | 3 jobs | 1 job | $0 |
 | Vercel Free | 100GB bandwidth | ~5GB | $0 |
@@ -142,10 +132,11 @@ This is the ONE genuinely new service added beyond the user's existing stack, an
 
 | Spec Recommends | We Use Instead | Why |
 |----------------|---------------|-----|
-| PostgreSQL | Neo4j | Existing stack, graph model |
-| Hibernate Panache | Neo4j driver + Cypher | No JPA for Neo4j |
-| Flyway | @Startup init scripts | Neo4j has no Flyway |
+| PostgreSQL | Upstash Redis | Direct key/index access fits the current workload |
+| Hibernate Panache | Quarkus Redis Data Source | No relational ORM is required |
+| Flyway | Idempotent startup seeds + versioned key prefix | Redis has no relational schema |
 | Jsoup CSS selectors | AI extraction | Adapts to site changes |
-| Google Cloud SQL | Neo4j AuraDB | Free tier |
+| Google Cloud SQL | Upstash Redis | Managed Redis and Vercel integration |
 | Firebase project (hosting) | Vercel | Already using Vercel |
-| Redis | Not currently used | Neo4j is sufficient for the present workload |
+| Separate cache | Not currently used | Upstash already serves the current persistence access patterns |
+

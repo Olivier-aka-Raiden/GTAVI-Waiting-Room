@@ -5,7 +5,7 @@ import java.util.UUID;
 
 /**
  * A detected change event (new trailer, release date change, edition announced, etc.).
- * Stored as Neo4j node with label :ChangeEvent.
+ * Stored as a JSON record in Upstash Redis.
  */
 public class ChangeEvent {
 
@@ -60,3 +60,4 @@ public class ChangeEvent {
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
 }
+
