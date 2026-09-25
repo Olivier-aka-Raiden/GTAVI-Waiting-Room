@@ -2,6 +2,7 @@ package com.gtavi.api.internal;
 
 import com.gtavi.monitoring.core.MonitoringOrchestrator;
 import com.gtavi.notification.fcm.FcmHttpSender;
+import com.gtavi.persistence.RedisPersistence;
 import io.quarkus.logging.Log;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -11,6 +12,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Map;
 
 /**
@@ -27,8 +30,14 @@ public class MonitoringResource {
     @Inject
     FcmHttpSender fcmSender;
 
+    @Inject
+    RedisPersistence persistence;
+
     @ConfigProperty(name = "gtavi.internal.shared-secret")
     String sharedSecret;
+
+    @ConfigProperty(name = "gtavi.snapshots.retention-days", defaultValue = "30")
+    int snapshotRetentionDays;
 
     @POST
     @Path("/check-updates")
@@ -65,6 +74,48 @@ public class MonitoringResource {
             Log.error("Monitoring run failed", e);
             return Response.serverError()
                 .entity(Map.of("error", e.getMessage()))
+                .build();
+        }
+    }
+
+    @POST
+    @Path("/cleanup-snapshots")
+    public Response cleanupSnapshots(@HeaderParam("X-Internal-Secret") String secret) {
+        if (!isAuthorized(secret)) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                .entity(Map.of("error", "unauthorized"))
+                .build();
+        }
+        if (snapshotRetentionDays < 1) {
+            Log.errorf("Invalid snapshot retention: %d days", snapshotRetentionDays);
+            return Response.serverError()
+                .entity(Map.of("error", "snapshot retention must be at least one day"))
+                .build();
+        }
+
+        try {
+            OffsetDateTime cutoff = OffsetDateTime.now(ZoneOffset.UTC)
+                .minusDays(snapshotRetentionDays);
+            var result = persistence.cleanupSnapshots(cutoff);
+            Log.infof(
+                "Snapshot cleanup complete: %d sources, %d snapshots deleted, "
+                    + "%d stale index entries deleted, %d daily hashes updated",
+                result.sourcesProcessed(), result.snapshotsDeleted(),
+                result.staleIndexEntriesDeleted(), result.dailyHashesUpdated());
+
+            return Response.ok(Map.of(
+                "status", "completed",
+                "retentionDays", snapshotRetentionDays,
+                "cutoff", result.cutoff().toString(),
+                "sourcesProcessed", result.sourcesProcessed(),
+                "snapshotsDeleted", result.snapshotsDeleted(),
+                "staleIndexEntriesDeleted", result.staleIndexEntriesDeleted(),
+                "dailyHashesUpdated", result.dailyHashesUpdated()
+            )).build();
+        } catch (Exception e) {
+            Log.error("Snapshot cleanup failed", e);
+            return Response.serverError()
+                .entity(Map.of("error", "snapshot cleanup failed"))
                 .build();
         }
     }

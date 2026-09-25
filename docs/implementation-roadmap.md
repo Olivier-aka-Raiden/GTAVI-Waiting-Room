@@ -10,7 +10,7 @@ Scope status for this pull request:
 
 - Implemented: every P0 item in A1 through A4, PWA installability, Java 26 CI, and the deployment image corrections.
 - Pending deployment validation: the A5 production sequence and its two-cycle observation period.
-- Planned follow-ups: deterministic non-AI adapters, extraction evidence, notification outbox, delivery metrics, overlapping-run protection, retention, and automated performance budgets.
+- Planned follow-ups: deterministic non-AI adapters, extraction evidence, delivery metrics, overlapping-run protection, and automated performance budgets.
 
 ### A1. Data correctness and safe extraction
 
@@ -28,9 +28,9 @@ Scope status for this pull request:
 |---|---|---|---|
 | P0 | Stop noisy listing alerts | Classify ordinary retailer listings as `RETAIL` and keep them out of push notifications | Only collector listings or user-selected price and stock transitions generate retail pushes |
 | P0 | Detect meaningful retail changes | Compare price and availability for stable product identities | `PRICE_CHANGED`, `OUT_OF_STOCK`, and `BACK_IN_STOCK` events contain old value, new value, retailer name, and product evidence URL |
-| P0 | Deduplicate before push | Reserve each event deduplication key in Redis before saving or notifying | Repeating the same snapshot never sends a second push |
-| P1 | Introduce a notification outbox | Write an `OutboxMessage` in the same transaction as the event, process it with retries, and add a unique constraint on event plus installation | Partial FCM failures retry safely and do not skip devices or resend to successful devices |
-| P1 | Add delivery observability | Record queued, sent, failed, invalid-token, and retry states with latency counters | Delivery success and retry backlog are visible in metrics |
+| P0 | Deduplicate before push | **Implemented:** create the deduplication reservation, event, visible index entry, and per-device outbox rows in one Redis script | Repeating the same snapshot never sends a second push |
+| P1 | Introduce a notification outbox | **Implemented:** persist one deterministic delivery per event and installation, lease due work, and retry transient failures independently with bounded exponential backoff | Partial FCM failures retry safely and do not skip devices or resend deliveries already recorded as successful |
+| P1 | Add delivery observability | **Partially implemented:** persist `QUEUED`, `SENT`, `RETRY`, `INVALID_TOKEN`, and `DEAD`; metrics and latency counters remain planned | Delivery success and retry backlog are visible in metrics |
 
 ### A3. Scheduling, security, and health
 
@@ -40,7 +40,7 @@ Scope status for this pull request:
 | P0 | Close the internal API bypass | Require the configured secret in every profile and compare it safely | Missing and wrong secrets return 401 in tests and production cannot start without a secret |
 | P0 | Report real system health | Evaluate the latest result for every enabled source and flag stale checks after two hours | One recent successful source cannot make a failing system look healthy |
 | P1 | Prevent overlapping runs | Acquire a short Redis lease keyed by monitoring job before fetching | Two scheduler invocations cannot process the same sources concurrently |
-| P1 | Add retention jobs | Keep full snapshots for 30 days, then retain daily hashes and all events | Upstash storage stays bounded without losing audit history |
+| P1 | Add retention jobs | **Implemented:** keep full snapshots for 30 days, retain the latest success and failure, then store daily hashes; events are unaffected | Upstash snapshot storage stays bounded without losing audit history |
 
 ### A4. Frontend correctness, performance, and accessibility
 

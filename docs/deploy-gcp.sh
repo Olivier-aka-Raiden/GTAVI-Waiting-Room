@@ -13,6 +13,7 @@ export GCP_PROJECT="gtavi-waiting-room-502319"           # your GCP project ID
 export GCP_REGION="europe-west1"                   # closest to you (CH)
 export SERVICE_NAME="gtavi-api"                    # Cloud Run service name
 export JOB_NAME="gtavi-monitor"                    # Cloud Scheduler job name
+export CLEANUP_JOB_NAME="gtavi-snapshot-cleanup"   # Daily snapshot cleanup job
 export ARTIFACT_REPO="gtavi"                       # Artifact Registry repo
 
 # -------------------------------------------------------
@@ -66,6 +67,7 @@ gcloud run deploy $SERVICE_NAME \
   --set-env-vars="QUARKUS_PROFILE=prod" \
   --set-env-vars="MONITORING_ENABLED=true" \
   --set-env-vars="FCM_ENABLED=false" \
+  --set-env-vars="SNAPSHOT_RETENTION_DAYS=30" \
   --set-env-vars="DEEPSEEK_BASE_URL=https://api.deepseek.com" \
   --set-env-vars="DEEPSEEK_MODEL=deepseek-v4-pro" \
   --set-env-vars="GTAVI_REDIS_KEY_PREFIX=gtavi:v1" \
@@ -102,6 +104,19 @@ gcloud scheduler jobs create http $JOB_NAME \
   --time-zone="Europe/Zurich" \
   --description="Triggers GTA VI source monitoring (Rockstar, retailers, Amazon)"
 
+# Once daily, compact snapshots older than 30 days into daily hash records.
+# The endpoint preserves the latest successful and failed full snapshot per source.
+gcloud scheduler jobs create http $CLEANUP_JOB_NAME \
+  --location=$GCP_REGION \
+  --project=$GCP_PROJECT \
+  --schedule="15 3 * * *" \
+  --uri="$BFF_URL/internal/jobs/cleanup-snapshots" \
+  --http-method=POST \
+  --headers="X-Internal-Secret=$SHARED_SECRET,Content-Type=application/json" \
+  --attempt-deadline=300s \
+  --time-zone="Europe/Zurich" \
+  --description="Compacts GTA VI monitoring snapshots older than 30 days"
+
 # -------------------------------------------------------
 # 6. (OPTIONAL) CORS — update for the Vercel frontend
 # -------------------------------------------------------
@@ -123,7 +138,16 @@ echo "=== Scheduler job ==="
 gcloud scheduler jobs describe $JOB_NAME \
   --location=$GCP_REGION --project=$GCP_PROJECT
 
+echo "=== Snapshot cleanup job ==="
+gcloud scheduler jobs describe $CLEANUP_JOB_NAME \
+  --location=$GCP_REGION --project=$GCP_PROJECT
+
 # Force a monitoring run to test the pipeline end-to-end:
 curl -s -X POST "$BFF_URL/internal/jobs/check-updates" \
+  -H "X-Internal-Secret: $SHARED_SECRET" \
+  -H "Content-Type: application/json" | jq .
+
+# Force a snapshot cleanup run:
+curl -s -X POST "$BFF_URL/internal/jobs/cleanup-snapshots" \
   -H "X-Internal-Secret: $SHARED_SECRET" \
   -H "Content-Type: application/json" | jq .

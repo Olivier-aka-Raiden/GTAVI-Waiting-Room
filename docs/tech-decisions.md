@@ -12,8 +12,8 @@ The application uses Upstash Redis as its system of record through Quarkus's `qu
 
 **Trade-offs:**
 - Redis has no graph query planner; every supported lookup requires an explicit index key.
-- Cross-key writes are not automatically relational, so idempotent writes and repairable indexes are used.
-- Monitoring snapshots accumulate and require quota monitoring plus a future retention policy.
+- Redis has no relational constraints. Critical cross-key changes therefore use atomic Lua scripts: event/deduplication/index/outbox creation, device-token ownership, delivery transitions, and offer/index moves. Startup seeds and migration imports remain idempotent and repairable.
+- Full monitoring snapshots are compacted after 30 days into daily hash records; the latest successful and failed full snapshot per source are retained. Upstash quotas still require monitoring.
 - Upstash eviction must remain disabled because the database is not merely a cache.
 
 **Alternatives considered:**

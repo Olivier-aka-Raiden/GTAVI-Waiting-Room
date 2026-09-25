@@ -50,6 +50,7 @@ public class MonitoringOrchestrator {
     public MonitoringRunSummary runCheck(Set<String> sourceCodes) {
         OffsetDateTime startedAt = OffsetDateTime.now();
         int checked = 0, successful = 0, failed = 0, eventsCreated = 0;
+        drainNotificationOutbox("before monitoring");
 
         List<GameSourceMonitor> monitors = getDueMonitors(sourceCodes);
         for (GameSourceMonitor monitor : monitors) {
@@ -72,15 +73,15 @@ public class MonitoringOrchestrator {
                         monitor.sourceCode(), monitor.sourceUrl(), previous, currentData);
                     int createdForSource = 0;
                     for (ChangeEvent event : events) {
-                        if (!persistence.saveEventIfAbsent(event)) {
+                        var queued = notificationService.saveEventAndQueue(event);
+                        if (!queued.created()) {
                             Log.debugf("Skipping duplicate event: %s", event.getDeduplicationKey());
                             continue;
                         }
                         createdForSource++;
-                        int notified = notificationService.sendNotifications(event);
-                        if (notified > 0) {
-                            Log.infof("Sent %d push notifications for event: %s",
-                                notified, event.getEventType());
+                        if (queued.deliveriesQueued() > 0) {
+                            Log.infof("Queued %d push notifications for event: %s",
+                                queued.deliveriesQueued(), event.getEventType());
                         }
                     }
                     eventsCreated += createdForSource;
@@ -109,8 +110,18 @@ public class MonitoringOrchestrator {
             }
         }
 
+        drainNotificationOutbox("after monitoring");
+
         return new MonitoringRunSummary(startedAt, OffsetDateTime.now(),
             checked, successful, failed, eventsCreated);
+    }
+
+    private void drainNotificationOutbox(String phase) {
+        try {
+            notificationService.processPendingDeliveries();
+        } catch (RuntimeException e) {
+            Log.errorf(e, "Could not process notification outbox %s", phase);
+        }
     }
 
     private List<GameSourceMonitor> getDueMonitors(Set<String> sourceCodes) {

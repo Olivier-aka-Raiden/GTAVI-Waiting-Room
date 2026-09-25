@@ -1,12 +1,19 @@
 package com.gtavi.notification;
 
 import com.gtavi.domain.ChangeEvent;
+import com.gtavi.domain.NotificationDelivery;
 import com.gtavi.notification.fcm.FcmHttpSender;
 import com.gtavi.persistence.RedisPersistence;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +30,21 @@ public class NotificationService {
     @Inject
     FcmHttpSender fcmSender;
 
+    @ConfigProperty(name = "gtavi.notifications.max-attempts", defaultValue = "5")
+    int maxAttempts;
+
+    @ConfigProperty(name = "gtavi.notifications.retry-base-seconds", defaultValue = "60")
+    long retryBaseSeconds;
+
+    @ConfigProperty(name = "gtavi.notifications.retry-max-seconds", defaultValue = "3600")
+    long retryMaxSeconds;
+
+    @ConfigProperty(name = "gtavi.notifications.outbox-batch-size", defaultValue = "100")
+    int outboxBatchSize;
+
+    @ConfigProperty(name = "gtavi.notifications.delivery-lease-seconds", defaultValue = "60")
+    long deliveryLeaseSeconds;
+
     private static final Map<String, String> EVENT_TITLE_TEMPLATES = Map.of(
         "COLLECTOR_EDITION_ANNOUNCED", "\uD83D\uDEA8 GTA VI Collector's Edition announced!",
         "COLLECTOR_EDITION_PREORDER_OPENED", "\uD83D\uDED2 Collector's Edition pre-orders open!",
@@ -32,45 +54,103 @@ public class NotificationService {
         "PREORDER_OPENED", "\uD83D\uDED2 GTA VI pre-orders are now available"
     );
 
-    public int sendNotifications(ChangeEvent event) {
-        if (!event.isNotificationEligible()) {
-            Log.debugf("Event %s not notification-eligible", event.getEventType());
-            return 0;
-        }
-
-        String title = EVENT_TITLE_TEMPLATES.getOrDefault(event.getEventType(), event.getTitle());
-        String body = event.getDescription() != null ? event.getDescription() : "";
-
-        if (persistence.isEventAlreadyDelivered(event.getId())) {
-            Log.debugf("Event %s already delivered, skipping", event.getDeduplicationKey());
-            return 0;
-        }
-
-        String preferenceField = eventTypeToPreferenceField(event.getEventType());
-        if (preferenceField == null) return 0;
-        List<RedisPersistence.DeviceTokenRecord> devices =
-            persistence.getEligibleDevices(preferenceField);
-
-        int sent = 0;
-        for (var device : devices) {
-            Map<String, String> data = Map.of(
-                "eventId", event.getId(),
-                "eventType", event.getEventType(),
-                "priority", event.getPriority()
-            );
-
-            String result = fcmSender.send(device.token(), title, body, data);
-            if ("INVALID_TOKEN".equals(result)) {
-                persistence.deactivateDevice(device.installationId());
-                Log.infof("Deactivated device with invalid token: %s", device.installationId());
-            } else if (result != null && !"disabled".equals(result)) {
-                persistence.recordDelivery(event.getId(), device.installationId(), result);
-                sent++;
+    public QueueResult saveEventAndQueue(ChangeEvent event) {
+        List<NotificationDelivery> deliveries = new ArrayList<>();
+        if (event.isNotificationEligible()) {
+            String preferenceField = eventTypeToPreferenceField(event.getEventType());
+            if (preferenceField != null) {
+                OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+                String title = EVENT_TITLE_TEMPLATES.getOrDefault(
+                    event.getEventType(), event.getTitle());
+                if (title == null || title.isBlank()) title = "GTA VI update";
+                String body = event.getDescription() == null ? "" : event.getDescription();
+                Map<String, String> data = notificationData(event);
+                for (var device : persistence.getEligibleDevices(preferenceField)) {
+                    deliveries.add(NotificationDelivery.queued(
+                        event.getId(), device.installationId(), title, body, data, now));
+                }
             }
         }
 
-        Log.infof("Sent %d notifications for event: %s", sent, event.getEventType());
+        boolean created = persistence.saveEventAndOutboxIfAbsent(event, deliveries);
+        return new QueueResult(created, created ? deliveries.size() : 0);
+    }
+
+    public int processPendingDeliveries() {
+        if (!fcmSender.isEnabled()) return 0;
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        var claimed = persistence.claimDueDeliveries(
+            now,
+            Math.max(1, outboxBatchSize),
+            Duration.ofSeconds(Math.max(1, deliveryLeaseSeconds)));
+        int sent = 0;
+        for (var item : claimed) {
+            NotificationDelivery delivery = item.delivery();
+            int attempts = delivery.attempts() + 1;
+            try {
+                var device = persistence.getActiveDeviceToken(delivery.installationId());
+                if (device == null) {
+                    persistence.markDeliveryDead(item, attempts,
+                        "Device is inactive or notifications are disabled", now);
+                    continue;
+                }
+
+                String result = fcmSender.send(device.token(), delivery.title(),
+                    delivery.body(), delivery.data());
+                if ("INVALID_TOKEN".equals(result)) {
+                    persistence.markDeliveryInvalidToken(item, attempts, now);
+                    persistence.deactivateDevice(delivery.installationId());
+                } else if (result != null && !"disabled".equals(result)) {
+                    if (persistence.markDeliverySent(item, attempts, result, now)) sent++;
+                } else {
+                    scheduleRetryOrDead(item, attempts, "Transient FCM delivery failure", now);
+                }
+            } catch (RuntimeException e) {
+                Log.errorf(e, "Delivery %s failed unexpectedly", delivery.id());
+                safelyScheduleRetryOrDead(item, attempts,
+                    "Unexpected delivery failure", now);
+            }
+        }
+        if (!claimed.isEmpty()) {
+            Log.infof("Processed %d notification deliveries; %d sent", claimed.size(), sent);
+        }
         return sent;
+    }
+
+    private void safelyScheduleRetryOrDead(
+        RedisPersistence.ClaimedNotificationDelivery claimed,
+        int attempts,
+        String error,
+        OffsetDateTime now
+    ) {
+        try {
+            scheduleRetryOrDead(claimed, attempts, error, now);
+        } catch (RuntimeException persistenceFailure) {
+            Log.errorf(persistenceFailure,
+                "Could not persist failed delivery %s; its lease will expire for retry",
+                claimed.delivery().id());
+        }
+    }
+
+    private void scheduleRetryOrDead(RedisPersistence.ClaimedNotificationDelivery claimed,
+                                     int attempts, String error, OffsetDateTime now) {
+        if (attempts >= Math.max(1, maxAttempts)) {
+            persistence.markDeliveryDead(claimed, attempts, error, now);
+            return;
+        }
+        long multiplier = 1L << Math.min(20, Math.max(0, attempts - 1));
+        long delay = Math.min(Math.max(0, retryMaxSeconds),
+            Math.max(0, retryBaseSeconds) * multiplier);
+        persistence.markDeliveryForRetry(claimed, attempts, error,
+            now.plusSeconds(delay), now);
+    }
+
+    private Map<String, String> notificationData(ChangeEvent event) {
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put("eventId", event.getId());
+        if (event.getEventType() != null) data.put("eventType", event.getEventType());
+        if (event.getPriority() != null) data.put("priority", event.getPriority());
+        return data;
     }
 
     private String eventTypeToPreferenceField(String eventType) {
@@ -89,4 +169,6 @@ public class NotificationService {
             default -> null;
         };
     }
+
+    public record QueueResult(boolean created, int deliveriesQueued) {}
 }

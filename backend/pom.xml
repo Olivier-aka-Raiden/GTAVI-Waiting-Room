@@ -11,7 +11,7 @@
 
     <properties>
         <compiler-plugin.version>3.14.1</compiler-plugin.version>
-        <maven.compiler.release>26</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
@@ -173,7 +173,7 @@
                 <configuration>
                     <compilerArgs>
                         <arg>-parameters</arg>
-                        <arg>--enable-preview</arg>
+<!--                        <arg>&#45;&#45;enable-preview</arg>-->
                     </compilerArgs>
                 </configuration>
             </plugin>
@@ -184,7 +184,7 @@
                     <systemPropertyVariables>
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                     </systemPropertyVariables>
-                    <argLine>@{argLine} --enable-preview</argLine>
+                    <argLine>@{argLine} </argLine><!-- &#45;&#45;enable-preview-->
                 </configuration>
             </plugin>
         </plugins>

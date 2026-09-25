@@ -8,14 +8,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.gtavi.domain.ChangeEvent;
 import com.gtavi.domain.Edition;
 import com.gtavi.domain.Game;
+import com.gtavi.domain.NotificationDelivery;
+import com.gtavi.domain.NotificationDeliveryStatus;
 import com.gtavi.domain.RetailOffer;
 import com.gtavi.domain.Retailer;
 import com.gtavi.domain.Trailer;
 import io.quarkus.redis.datasource.RedisDataSource;
 import io.quarkus.redis.datasource.hash.HashCommands;
 import io.quarkus.redis.datasource.set.SetCommands;
+import io.quarkus.redis.datasource.sortedset.ScoreRange;
 import io.quarkus.redis.datasource.sortedset.SortedSetCommands;
 import io.quarkus.redis.datasource.sortedset.ZRangeArgs;
+import io.quarkus.redis.datasource.value.SetArgs;
 import io.quarkus.redis.datasource.value.ValueCommands;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -23,10 +27,14 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +53,135 @@ import java.util.UUID;
 public class RedisPersistence {
 
     private static final String DEFAULT_GAME_CODE = "GTA_VI";
+    private static final int ATOMIC_WRITE_MAX_RETRIES = 5;
+    private static final int SNAPSHOT_CLEANUP_BATCH_SIZE = 250;
+    private static final String SAVE_EVENT_AND_OUTBOX_SCRIPT = """
+        local existing = redis.call('HGET', KEYS[1], ARGV[1])
+        if existing then
+          return {0, existing}
+        end
+        redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+        redis.call('SET', KEYS[2], ARGV[3])
+        if ARGV[5] == '1' then
+          redis.call('ZADD', KEYS[3], ARGV[4], ARGV[2])
+        end
+        for i = 6, #ARGV, 4 do
+          redis.call('SET', ARGV[i], ARGV[i + 2])
+          redis.call('SADD', KEYS[4], ARGV[i + 1])
+          redis.call('SADD', KEYS[5], ARGV[i + 1])
+          redis.call('ZADD', KEYS[6], ARGV[i + 3], ARGV[i + 1])
+        end
+        return {1, ARGV[2]}
+        """;
+    private static final String UPSERT_OFFER_SCRIPT = """
+        local current = redis.call('GET', KEYS[1]) or ''
+        if current ~= ARGV[1] then
+          return 0
+        end
+        redis.call('SET', KEYS[1], ARGV[2])
+        redis.call('SADD', KEYS[2], ARGV[3])
+        redis.call('SADD', KEYS[3], ARGV[3])
+        if KEYS[4] ~= KEYS[2] then redis.call('SREM', KEYS[4], ARGV[3]) end
+        if KEYS[5] ~= KEYS[3] then redis.call('SREM', KEYS[5], ARGV[3]) end
+        return 1
+        """;
+    private static final String REGISTER_DEVICE_SCRIPT = """
+        local raw = redis.call('GET', KEYS[1])
+        local device = raw and cjson.decode(raw) or {}
+        local previousToken = device.pushToken
+        local owner = redis.call('HGET', KEYS[3], ARGV[3])
+        if owner and owner ~= ARGV[2] then
+          local otherKey = ARGV[1] .. ':device:' .. owner
+          local otherRaw = redis.call('GET', otherKey)
+          if otherRaw then
+            local other = cjson.decode(otherRaw)
+            other.active = false
+            other.notificationsEnabled = false
+            other.updatedAt = ARGV[7]
+            redis.call('SET', otherKey, cjson.encode(other))
+          end
+        end
+        if previousToken and previousToken ~= ARGV[3]
+            and redis.call('HGET', KEYS[3], previousToken) == ARGV[2] then
+          redis.call('HDEL', KEYS[3], previousToken)
+        end
+        device.installationId = ARGV[2]
+        device.pushToken = ARGV[3]
+        device.platform = ARGV[4]
+        device.locale = ARGV[5]
+        device.appVersion = ARGV[6]
+        device.notificationsEnabled = true
+        device.active = true
+        device.lastSeenAt = ARGV[7]
+        if not device.createdAt then device.createdAt = ARGV[7] end
+        device.updatedAt = ARGV[7]
+        redis.call('SET', KEYS[1], cjson.encode(device))
+        redis.call('SADD', KEYS[2], ARGV[2])
+        redis.call('HSET', KEYS[3], ARGV[3], ARGV[2])
+        redis.call('SETNX', KEYS[4], ARGV[8])
+        return 1
+        """;
+    private static final String UPDATE_DEVICE_SCRIPT = """
+        local raw = redis.call('GET', KEYS[1])
+        if not raw then return 0 end
+        local device = cjson.decode(raw)
+        if ARGV[3] == '1' then
+          local token = ARGV[4]
+          local previousToken = device.pushToken
+          local owner = redis.call('HGET', KEYS[2], token)
+          if owner and owner ~= ARGV[2] then
+            local otherKey = ARGV[1] .. ':device:' .. owner
+            local otherRaw = redis.call('GET', otherKey)
+            if otherRaw then
+              local other = cjson.decode(otherRaw)
+              other.active = false
+              other.notificationsEnabled = false
+              other.updatedAt = ARGV[11]
+              redis.call('SET', otherKey, cjson.encode(other))
+            end
+          end
+          if previousToken and previousToken ~= token
+              and redis.call('HGET', KEYS[2], previousToken) == ARGV[2] then
+            redis.call('HDEL', KEYS[2], previousToken)
+          end
+          device.pushToken = token
+          redis.call('HSET', KEYS[2], token, ARGV[2])
+        end
+        if ARGV[5] == '1' then device.appVersion = ARGV[6] end
+        if ARGV[7] == '1' then device.locale = ARGV[8] end
+        if ARGV[9] == '1' then device.notificationsEnabled = ARGV[10] == '1' end
+        device.lastSeenAt = ARGV[11]
+        device.updatedAt = ARGV[11]
+        redis.call('SET', KEYS[1], cjson.encode(device))
+        return 1
+        """;
+    private static final String DEACTIVATE_DEVICE_SCRIPT = """
+        local raw = redis.call('GET', KEYS[1])
+        if not raw then return 0 end
+        local device = cjson.decode(raw)
+        local token = device.pushToken
+        device.active = false
+        device.notificationsEnabled = false
+        device.updatedAt = ARGV[2]
+        redis.call('SET', KEYS[1], cjson.encode(device))
+        if token and redis.call('HGET', KEYS[2], token) == ARGV[1] then
+          redis.call('HDEL', KEYS[2], token)
+        end
+        return 1
+        """;
+    private static final String COMPLETE_DELIVERY_SCRIPT = """
+        if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+          return 0
+        end
+        redis.call('SET', KEYS[2], ARGV[2])
+        if ARGV[3] == '1' then
+          redis.call('ZADD', KEYS[3], ARGV[4], ARGV[5])
+        else
+          redis.call('ZREM', KEYS[3], ARGV[5])
+        end
+        redis.call('DEL', KEYS[1])
+        return 1
+        """;
     private static final List<String> PREFERENCE_FIELDS = List.of(
         "collectorEditionAnnouncement",
         "collectorEditionPreorder",
@@ -58,6 +195,7 @@ public class RedisPersistence {
     );
 
     private final ObjectMapper objectMapper;
+    private final RedisDataSource redis;
     private final ValueCommands<String, String> values;
     private final SetCommands<String, String> sets;
     private final SortedSetCommands<String, String> sortedSets;
@@ -71,6 +209,7 @@ public class RedisPersistence {
         @ConfigProperty(name = "gtavi.redis.key-prefix", defaultValue = "gtavi:v1") String prefix
     ) {
         this.objectMapper = objectMapper;
+        this.redis = redis;
         this.values = redis.value(String.class);
         this.sets = redis.set(String.class);
         this.sortedSets = redis.sortedSet(String.class);
@@ -154,37 +293,48 @@ public class RedisPersistence {
                             String platform, String countryCode, BigDecimal price,
                             String currency, String url, String availabilityStatus,
                             boolean preorderAvailable) {
-        OffsetDateTime now = OffsetDateTime.now();
         String key = entityKey("offer", id);
-        JsonNode previous = readNode(key);
-        boolean changed = previous == null
-            || !sameText(previous, "price", price == null ? null : price.toPlainString())
-            || !sameText(previous, "currency", currency)
-            || !sameText(previous, "url", url)
-            || !sameText(previous, "availabilityStatus", availabilityStatus);
+        for (int attempt = 0; attempt < ATOMIC_WRITE_MAX_RETRIES; attempt++) {
+            String previousJson = values.get(key);
+            JsonNode previous = parseNode(key, previousJson);
+            OffsetDateTime now = OffsetDateTime.now();
+            boolean changed = previous == null
+                || !sameText(previous, "price", price == null ? null : price.toPlainString())
+                || !sameText(previous, "currency", currency)
+                || !sameText(previous, "url", url)
+                || !sameText(previous, "availabilityStatus", availabilityStatus);
 
-        ObjectNode offer = previous != null && previous.isObject()
-            ? ((ObjectNode) previous).deepCopy() : objectMapper.createObjectNode();
-        offer.put("id", id);
-        offer.put("editionId", editionId);
-        offer.put("retailerCode", retailerCode);
-        putNullable(offer, "platform", platform);
-        putNullable(offer, "countryCode", countryCode);
-        if (price == null) offer.putNull("price"); else offer.put("price", price);
-        putNullable(offer, "currency", currency);
-        putNullable(offer, "url", url);
-        putNullable(offer, "availabilityStatus", availabilityStatus);
-        offer.put("preorderAvailable", preorderAvailable);
-        offer.put("active", true);
-        offer.put("missedChecks", 0);
-        offer.put("lastSuccessfulCheckAt", now.toString());
-        if (changed) offer.put("lastChangedAt", now.toString());
-        if (!offer.hasNonNull("createdAt")) offer.put("createdAt", now.toString());
-        offer.put("updatedAt", now.toString());
+            ObjectNode offer = previous != null && previous.isObject()
+                ? ((ObjectNode) previous).deepCopy() : objectMapper.createObjectNode();
+            offer.put("id", id);
+            offer.put("editionId", editionId);
+            offer.put("retailerCode", retailerCode);
+            putNullable(offer, "platform", platform);
+            putNullable(offer, "countryCode", countryCode);
+            if (price == null) offer.putNull("price"); else offer.put("price", price);
+            putNullable(offer, "currency", currency);
+            putNullable(offer, "url", url);
+            putNullable(offer, "availabilityStatus", availabilityStatus);
+            offer.put("preorderAvailable", preorderAvailable);
+            offer.put("active", true);
+            offer.put("missedChecks", 0);
+            offer.put("lastSuccessfulCheckAt", now.toString());
+            if (changed) offer.put("lastChangedAt", now.toString());
+            if (!offer.hasNonNull("createdAt")) offer.put("createdAt", now.toString());
+            offer.put("updatedAt", now.toString());
 
-        writeNode(key, offer);
-        sets.sadd(indexKey("offers", "edition", editionId), id);
-        sets.sadd(indexKey("offers", "retailer", retailerCode), id);
+            String oldEdition = previous == null ? editionId : text(previous, "editionId");
+            String oldRetailer = previous == null ? retailerCode : text(previous, "retailerCode");
+            int result = evalInteger(UPSERT_OFFER_SCRIPT,
+                List.of(key,
+                    indexKey("offers", "edition", editionId),
+                    indexKey("offers", "retailer", retailerCode),
+                    indexKey("offers", "edition", oldEdition == null ? editionId : oldEdition),
+                    indexKey("offers", "retailer", oldRetailer == null ? retailerCode : oldRetailer)),
+                List.of(previousJson == null ? "" : previousJson, offer.toString(), id));
+            if (result == 1) return;
+        }
+        throw new IllegalStateException("Could not atomically update offer " + id);
     }
 
     public void deactivateOffer(String id) {
@@ -231,33 +381,47 @@ public class RedisPersistence {
     }
 
     public boolean saveEventIfAbsent(ChangeEvent event) {
+        return saveEventAndOutboxIfAbsent(event, List.of());
+    }
+
+    public boolean saveEventAndOutboxIfAbsent(
+        ChangeEvent event,
+        List<NotificationDelivery> deliveries
+    ) {
         if (event.getGameCode() == null) event.setGameCode(DEFAULT_GAME_CODE);
         if (event.getDetectedAt() == null) event.setDetectedAt(OffsetDateTime.now());
         if (event.getCreatedAt() == null) event.setCreatedAt(OffsetDateTime.now());
         String deduplicationKey = event.getDeduplicationKey() == null
             ? event.getId() : event.getDeduplicationKey();
 
-        String existingId = hashes.hget(indexKey("events", "dedup"), deduplicationKey);
-        if (existingId != null) {
-            event.setId(existingId);
-            return false;
-        }
-        if (!hashes.hsetnx(indexKey("events", "dedup"), deduplicationKey, event.getId())) {
-            event.setId(hashes.hget(indexKey("events", "dedup"), deduplicationKey));
-            return false;
+        List<String> arguments = new ArrayList<>();
+        arguments.add(deduplicationKey);
+        arguments.add(event.getId());
+        arguments.add(toJson(event));
+        arguments.add(Long.toString(epoch(event.getDetectedAt())));
+        arguments.add(event.isUserVisible() ? "1" : "0");
+        for (NotificationDelivery delivery : deliveries) {
+            if (!event.getId().equals(delivery.eventId())) {
+                throw new IllegalArgumentException("Delivery event ID does not match event");
+            }
+            arguments.add(entityKey("delivery", delivery.id()));
+            arguments.add(delivery.id());
+            arguments.add(toJson(delivery));
+            arguments.add(Long.toString(epoch(delivery.nextAttemptAt())));
         }
 
-        try {
-            write(entityKey("event", event.getId()), event);
-            if (event.isUserVisible()) {
-                sortedSets.zadd(indexKey("events", "game", event.getGameCode(), "visible"),
-                    epoch(event.getDetectedAt()), event.getId());
-            }
-            return true;
-        } catch (RuntimeException e) {
-            hashes.hdel(indexKey("events", "dedup"), deduplicationKey);
-            throw e;
-        }
+        var result = eval(SAVE_EVENT_AND_OUTBOX_SCRIPT,
+            List.of(
+                indexKey("events", "dedup"),
+                entityKey("event", event.getId()),
+                indexKey("events", "game", event.getGameCode(), "visible"),
+                indexKey("deliveries"),
+                indexKey("deliveries", "event", event.getId()),
+                indexKey("deliveries", "pending")),
+            arguments);
+        boolean created = result.get(0).toInteger() == 1;
+        if (!created) event.setId(result.get(1).toString());
+        return created;
     }
 
     // ---- Source definitions and monitoring snapshots ----
@@ -322,7 +486,14 @@ public class RedisPersistence {
 
     public void saveSnapshot(String sourceCode, String sourceUrl, JsonNode data,
                              String hash, boolean successful, String errorMessage) {
-        OffsetDateTime checkedAt = OffsetDateTime.now();
+        saveSnapshotAt(sourceCode, sourceUrl, data, hash, successful, errorMessage,
+            OffsetDateTime.now());
+    }
+
+    String saveSnapshotAt(String sourceCode, String sourceUrl, JsonNode data,
+                          String hash, boolean successful, String errorMessage,
+                          OffsetDateTime checkedAt) {
+        Objects.requireNonNull(checkedAt, "checkedAt");
         String id = checkedAt.toInstant().toEpochMilli() + "-" + UUID.randomUUID();
         ObjectNode snapshot = objectMapper.createObjectNode();
         snapshot.put("id", id);
@@ -341,6 +512,87 @@ public class RedisPersistence {
         if (successful) {
             sortedSets.zadd(indexKey("snapshots", "successful", sourceCode), epoch(checkedAt), id);
         }
+        return id;
+    }
+
+    /**
+     * Replaces full snapshots older than {@code cutoff} with compact daily audit
+     * records. The newest successful and newest failed snapshot for every source
+     * are always retained so monitoring and diagnosis keep a full reference point.
+     */
+    public SnapshotCleanupResult cleanupSnapshots(OffsetDateTime cutoff) {
+        Objects.requireNonNull(cutoff, "cutoff");
+
+        int sourcesProcessed = 0;
+        int snapshotsDeleted = 0;
+        int staleIndexEntriesDeleted = 0;
+        int dailyHashesUpdated = 0;
+
+        for (String sourceCode : sets.smembers(indexKey("sources"))) {
+            String sourceIndex = indexKey("snapshots", "source", sourceCode);
+            String successfulIndex = indexKey("snapshots", "successful", sourceCode);
+            if (sortedSets.zcard(sourceIndex) == 0) continue;
+            sourcesProcessed++;
+
+            Set<String> retainedIds = new HashSet<>();
+            String latestSuccessfulId = latestSnapshotId(successfulIndex, true);
+            String latestFailedId = latestSnapshotId(sourceIndex, false);
+            if (latestSuccessfulId != null) retainedIds.add(latestSuccessfulId);
+            if (latestFailedId != null) retainedIds.add(latestFailedId);
+
+            ScoreRange<Double> expiredRange = new ScoreRange<>(
+                null, true, (double) epoch(cutoff), false);
+
+            while (true) {
+                List<String> expiredIds = sortedSets.zrangebyscore(
+                    sourceIndex, expiredRange,
+                    new ZRangeArgs().limit(0, SNAPSHOT_CLEANUP_BATCH_SIZE));
+                if (expiredIds.isEmpty()) break;
+
+                List<String> deletableIds = expiredIds.stream()
+                    .filter(id -> !retainedIds.contains(id))
+                    .toList();
+                if (deletableIds.isEmpty()) break;
+
+                Map<LocalDate, ObjectNode> dailyHashes = new LinkedHashMap<>();
+                List<String> snapshotKeys = new ArrayList<>();
+                int existingSnapshots = 0;
+                for (String id : deletableIds) {
+                    String snapshotKey = entityKey("snapshot", id);
+                    JsonNode snapshot = readNode(snapshotKey);
+                    snapshotKeys.add(snapshotKey);
+                    if (snapshot == null) continue;
+                    existingSnapshots++;
+                    mergeDailyHash(sourceCode, snapshot, dailyHashes);
+                }
+
+                redis.withTransaction(transaction -> {
+                    var transactionValues = transaction.value(String.class);
+                    var transactionSortedSets = transaction.sortedSet(String.class);
+                    for (Map.Entry<LocalDate, ObjectNode> entry : dailyHashes.entrySet()) {
+                        LocalDate day = entry.getKey();
+                        transactionValues.set(
+                            entityKey("snapshot-daily", sourceCode + ":" + day),
+                            entry.getValue().toString());
+                        transactionSortedSets.zadd(
+                            indexKey("snapshots", "daily", sourceCode),
+                            day.atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli(),
+                            day.toString());
+                    }
+                    String[] ids = deletableIds.toArray(String[]::new);
+                    transactionSortedSets.zrem(sourceIndex, ids);
+                    transactionSortedSets.zrem(successfulIndex, ids);
+                    transaction.key().del(snapshotKeys.toArray(String[]::new));
+                });
+
+                snapshotsDeleted += existingSnapshots;
+                staleIndexEntriesDeleted += deletableIds.size() - existingSnapshots;
+                dailyHashesUpdated += dailyHashes.size();
+            }
+        }
+
+        return new SnapshotCleanupResult(cutoff, sourcesProcessed, snapshotsDeleted,
+            staleIndexEntriesDeleted, dailyHashesUpdated);
     }
 
     private JsonNode latestSnapshot(String sourceCode, boolean successfulOnly) {
@@ -351,65 +603,101 @@ public class RedisPersistence {
         return ids.isEmpty() ? null : readNode(entityKey("snapshot", ids.getFirst()));
     }
 
+    private String latestSnapshotId(String index, boolean successful) {
+        long offset = 0;
+        while (true) {
+            List<String> ids = sortedSets.zrange(index, offset,
+                offset + SNAPSHOT_CLEANUP_BATCH_SIZE - 1L, new ZRangeArgs().rev());
+            if (ids.isEmpty()) return null;
+            for (String id : ids) {
+                JsonNode snapshot = readNode(entityKey("snapshot", id));
+                if (snapshot != null
+                    && snapshot.path("successful").asBoolean(false) == successful) {
+                    return id;
+                }
+            }
+            offset += ids.size();
+        }
+    }
+
+    private void mergeDailyHash(String sourceCode, JsonNode snapshot,
+                                Map<LocalDate, ObjectNode> dailyHashes) {
+        OffsetDateTime checkedAt = parseDate(snapshot, "checkedAt");
+        if (checkedAt == null) return;
+        LocalDate day = checkedAt.withOffsetSameInstant(ZoneOffset.UTC).toLocalDate();
+        ObjectNode daily = dailyHashes.computeIfAbsent(day, ignored -> {
+            JsonNode existing = readNode(entityKey("snapshot-daily", sourceCode + ":" + day));
+            if (existing != null && existing.isObject()) {
+                return ((ObjectNode) existing).deepCopy();
+            }
+            ObjectNode created = objectMapper.createObjectNode();
+            created.put("sourceCode", sourceCode);
+            created.put("date", day.toString());
+            return created;
+        });
+
+        OffsetDateTime previousLatest = parseDate(daily, "latestCheckedAt");
+        if (previousLatest == null || checkedAt.isAfter(previousLatest)) {
+            daily.put("latestCheckedAt", checkedAt.toString());
+            daily.put("latestStatus", snapshot.path("successful").asBoolean(false)
+                ? "SUCCESS" : "FAILURE");
+        }
+
+        if (snapshot.path("successful").asBoolean(false)) {
+            OffsetDateTime previousSuccessful = parseDate(daily, "latestSuccessfulAt");
+            if (previousSuccessful == null || checkedAt.isAfter(previousSuccessful)) {
+                daily.put("latestSuccessfulAt", checkedAt.toString());
+                putNullable(daily, "latestSuccessfulHash", text(snapshot, "normalizedHash"));
+            }
+        }
+        daily.put("updatedAt", OffsetDateTime.now(ZoneOffset.UTC).toString());
+    }
+
+    JsonNode getSnapshot(String id) {
+        return readNode(entityKey("snapshot", id));
+    }
+
+    JsonNode getDailySnapshotHash(String sourceCode, LocalDate day) {
+        return readNode(entityKey("snapshot-daily", sourceCode + ":" + day));
+    }
+
     // ---- Devices, preferences and notification deliveries ----
 
     public void registerDevice(String installationId, String pushToken,
                                String platform, String locale, String appVersion) {
         OffsetDateTime now = OffsetDateTime.now();
-        deactivateTokenOwner(pushToken, installationId);
-
-        String key = entityKey("device", installationId);
-        JsonNode current = readNode(key);
-        ObjectNode device = current != null && current.isObject()
-            ? ((ObjectNode) current).deepCopy() : objectMapper.createObjectNode();
-
-        String previousToken = text(device, "pushToken");
-        if (previousToken != null && !previousToken.equals(pushToken)) {
-            hashes.hdel(indexKey("device-tokens"), previousToken);
-        }
-        device.put("installationId", installationId);
-        device.put("pushToken", pushToken);
-        device.put("platform", platform);
-        device.put("locale", locale);
-        device.put("appVersion", appVersion);
-        device.put("notificationsEnabled", true);
-        device.put("active", true);
-        device.put("lastSeenAt", now.toString());
-        if (!device.hasNonNull("createdAt")) device.put("createdAt", now.toString());
-        device.put("updatedAt", now.toString());
-        writeNode(key, device);
-        sets.sadd(indexKey("devices"), installationId);
-        hashes.hset(indexKey("device-tokens"), pushToken, installationId);
-        ensurePreferences(installationId);
+        evalInteger(REGISTER_DEVICE_SCRIPT,
+            List.of(
+                entityKey("device", installationId),
+                indexKey("devices"),
+                indexKey("device-tokens"),
+                entityKey("preferences", installationId)),
+            List.of(prefix, installationId, pushToken, platform, locale, appVersion,
+                now.toString(), newPreferences(now).toString()));
     }
 
     public boolean updateDevice(String installationId, Map<String, Object> changes) {
-        String key = entityKey("device", installationId);
-        JsonNode current = readNode(key);
-        if (current == null || !current.isObject()) return false;
-        ObjectNode device = ((ObjectNode) current).deepCopy();
-
-        if (changes.containsKey("pushToken") && changes.get("pushToken") instanceof String token
-            && !token.isBlank()) {
-            deactivateTokenOwner(token, installationId);
-            String previousToken = text(device, "pushToken");
-            if (previousToken != null && !previousToken.equals(token)) {
-                hashes.hdel(indexKey("device-tokens"), previousToken);
-            }
-            device.put("pushToken", token);
-            hashes.hset(indexKey("device-tokens"), token, installationId);
-        }
-        putStringChange(device, changes, "appVersion");
-        putStringChange(device, changes, "locale");
-        if (changes.containsKey("notificationsEnabled")
-            && changes.get("notificationsEnabled") instanceof Boolean enabled) {
-            device.put("notificationsEnabled", enabled);
-        }
-        OffsetDateTime now = OffsetDateTime.now();
-        device.put("lastSeenAt", now.toString());
-        device.put("updatedAt", now.toString());
-        writeNode(key, device);
-        return true;
+        String token = changes.get("pushToken") instanceof String value && !value.isBlank()
+            ? value : "";
+        String appVersion = changes.get("appVersion") instanceof String value ? value : "";
+        String locale = changes.get("locale") instanceof String value ? value : "";
+        Boolean notificationsEnabled = changes.get("notificationsEnabled") instanceof Boolean value
+            ? value : null;
+        int result = evalInteger(UPDATE_DEVICE_SCRIPT,
+            List.of(entityKey("device", installationId), indexKey("device-tokens")),
+            List.of(
+                prefix,
+                installationId,
+                token.isEmpty() ? "0" : "1",
+                token,
+                appVersion.isEmpty() ? "0" : "1",
+                appVersion,
+                locale.isEmpty() ? "0" : "1",
+                locale,
+                notificationsEnabled == null ? "0" : "1",
+                Boolean.TRUE.equals(notificationsEnabled) ? "1" : "0",
+                OffsetDateTime.now().toString()));
+        return result == 1;
     }
 
     public Map<String, Boolean> getOrCreatePreferences(String installationId) {
@@ -452,50 +740,127 @@ public class RedisPersistence {
     }
 
     public void deactivateDevice(String installationId) {
-        String key = entityKey("device", installationId);
-        JsonNode current = readNode(key);
-        if (current == null || !current.isObject()) return;
-        ObjectNode device = ((ObjectNode) current).deepCopy();
-        device.put("active", false);
-        device.put("updatedAt", OffsetDateTime.now().toString());
-        writeNode(key, device);
+        evalInteger(DEACTIVATE_DEVICE_SCRIPT,
+            List.of(entityKey("device", installationId), indexKey("device-tokens")),
+            List.of(installationId, OffsetDateTime.now().toString()));
     }
 
-    public boolean isEventAlreadyDelivered(String eventId) {
-        return sets.scard(indexKey("deliveries", "event", eventId)) > 0;
+    public DeviceTokenRecord getActiveDeviceToken(String installationId) {
+        JsonNode device = readNode(entityKey("device", installationId));
+        if (device == null
+            || !device.path("active").asBoolean(true)
+            || !device.path("notificationsEnabled").asBoolean(false)) return null;
+        String token = text(device, "pushToken");
+        return token == null || token.isBlank()
+            ? null : new DeviceTokenRecord(installationId, token);
     }
 
-    public void recordDelivery(String eventId, String installationId, String messageId) {
-        OffsetDateTime now = OffsetDateTime.now();
-        String id = eventId + ":" + installationId + ":" + UUID.randomUUID();
-        ObjectNode delivery = objectMapper.createObjectNode();
-        delivery.put("id", id);
-        delivery.put("changeEventId", eventId);
-        delivery.put("deviceInstallationId", installationId);
-        delivery.put("providerMessageId", messageId);
-        delivery.put("status", "SENT");
-        delivery.put("sentAt", now.toString());
-        delivery.put("createdAt", now.toString());
-        writeNode(entityKey("delivery", id), delivery);
-        sets.sadd(indexKey("deliveries"), id);
-        sets.sadd(indexKey("deliveries", "event", eventId), id);
+    public List<ClaimedNotificationDelivery> claimDueDeliveries(
+        OffsetDateTime now,
+        int limit,
+        Duration leaseDuration
+    ) {
+        if (limit < 1) return List.of();
+        ScoreRange<Double> dueRange = new ScoreRange<>(
+            null, true, (double) epoch(now), true);
+        List<String> ids = sortedSets.zrangebyscore(
+            indexKey("deliveries", "pending"), dueRange,
+            new ZRangeArgs().limit(0, limit));
+        List<ClaimedNotificationDelivery> claimed = new ArrayList<>();
+        for (String id : ids) {
+            NotificationDelivery delivery = read(
+                entityKey("delivery", id), NotificationDelivery.class);
+            if (delivery == null || (delivery.status() != NotificationDeliveryStatus.QUEUED
+                && delivery.status() != NotificationDeliveryStatus.RETRY)) {
+                sortedSets.zrem(indexKey("deliveries", "pending"), id);
+                continue;
+            }
+            String claimId = UUID.randomUUID().toString();
+            boolean acquired = values.setAndChanged(
+                entityKey("delivery-claim", id), claimId,
+                new SetArgs().nx().ex(leaseDuration));
+            if (acquired) claimed.add(new ClaimedNotificationDelivery(delivery, claimId));
+        }
+        return claimed;
+    }
+
+    public NotificationDelivery getNotificationDelivery(
+        String eventId,
+        String installationId
+    ) {
+        return read(entityKey("delivery", eventId + ":" + installationId),
+            NotificationDelivery.class);
+    }
+
+    public boolean markDeliverySent(ClaimedNotificationDelivery claimed,
+                                    int attempts, String providerMessageId,
+                                    OffsetDateTime now) {
+        return transitionDelivery(claimed, NotificationDeliveryStatus.SENT,
+            attempts, null, providerMessageId, now, null);
+    }
+
+    public boolean markDeliveryForRetry(ClaimedNotificationDelivery claimed,
+                                        int attempts, String error,
+                                        OffsetDateTime nextAttemptAt,
+                                        OffsetDateTime now) {
+        return transitionDelivery(claimed, NotificationDeliveryStatus.RETRY,
+            attempts, error, null, now, nextAttemptAt);
+    }
+
+    public boolean markDeliveryInvalidToken(ClaimedNotificationDelivery claimed,
+                                            int attempts, OffsetDateTime now) {
+        return transitionDelivery(claimed, NotificationDeliveryStatus.INVALID_TOKEN,
+            attempts, "FCM rejected the registration token", null, now, null);
+    }
+
+    public boolean markDeliveryDead(ClaimedNotificationDelivery claimed,
+                                    int attempts, String error,
+                                    OffsetDateTime now) {
+        return transitionDelivery(claimed, NotificationDeliveryStatus.DEAD,
+            attempts, error, null, now, null);
+    }
+
+    private boolean transitionDelivery(
+        ClaimedNotificationDelivery claimed,
+        NotificationDeliveryStatus status,
+        int attempts,
+        String error,
+        String providerMessageId,
+        OffsetDateTime now,
+        OffsetDateTime nextAttemptAt
+    ) {
+        NotificationDelivery current = claimed.delivery();
+        NotificationDelivery updated = new NotificationDelivery(
+            current.id(),
+            current.eventId(),
+            current.installationId(),
+            current.title(),
+            current.body(),
+            current.data(),
+            status,
+            attempts,
+            nextAttemptAt,
+            providerMessageId,
+            error,
+            status == NotificationDeliveryStatus.SENT ? now : null,
+            current.createdAt(),
+            now);
+        boolean retry = status == NotificationDeliveryStatus.RETRY;
+        int result = evalInteger(COMPLETE_DELIVERY_SCRIPT,
+            List.of(
+                entityKey("delivery-claim", current.id()),
+                entityKey("delivery", current.id()),
+                indexKey("deliveries", "pending")),
+            List.of(
+                claimed.claimId(),
+                toJson(updated),
+                retry ? "1" : "0",
+                retry ? Long.toString(epoch(nextAttemptAt)) : "0",
+                current.id()));
+        return result == 1;
     }
 
     // ---- Internal helpers ----
-
-    private void deactivateTokenOwner(String pushToken, String newInstallationId) {
-        String otherId = hashes.hget(indexKey("device-tokens"), pushToken);
-        if (otherId == null || otherId.equals(newInstallationId)) return;
-        String otherKey = entityKey("device", otherId);
-        JsonNode current = readNode(otherKey);
-        if (current != null && current.isObject()) {
-            ObjectNode other = ((ObjectNode) current).deepCopy();
-            other.put("active", false);
-            other.put("notificationsEnabled", false);
-            other.put("updatedAt", OffsetDateTime.now().toString());
-            writeNode(otherKey, other);
-        }
-    }
 
     private void ensureDeviceStub(String installationId) {
         String key = entityKey("device", installationId);
@@ -524,12 +889,17 @@ public class RedisPersistence {
         String key = entityKey("preferences", installationId);
         JsonNode current = readNode(key);
         if (current != null && current.isObject()) return ((ObjectNode) current).deepCopy();
+        ObjectNode preferences = newPreferences(OffsetDateTime.now());
+        writeNode(key, preferences);
+        return preferences;
+    }
+
+    private ObjectNode newPreferences(OffsetDateTime now) {
         ObjectNode preferences = objectMapper.createObjectNode();
         for (String field : PREFERENCE_FIELDS) {
             preferences.put(field, defaultPreference(field));
         }
-        preferences.put("updatedAt", OffsetDateTime.now().toString());
-        writeNode(key, preferences);
+        preferences.put("updatedAt", now.toString());
         return preferences;
     }
 
@@ -589,12 +959,34 @@ public class RedisPersistence {
 
     private JsonNode readNode(String key) {
         String json = values.get(key);
+        return parseNode(key, json);
+    }
+
+    private JsonNode parseNode(String key, String json) {
         if (json == null) return null;
         try {
             return objectMapper.readTree(json);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Invalid Redis JSON at key " + key, e);
         }
+    }
+
+    private io.vertx.mutiny.redis.client.Response eval(
+        String script,
+        List<String> redisKeys,
+        List<String> arguments
+    ) {
+        List<String> command = new ArrayList<>(2 + redisKeys.size() + arguments.size());
+        command.add(script);
+        command.add(Integer.toString(redisKeys.size()));
+        command.addAll(redisKeys);
+        command.addAll(arguments);
+        return redis.execute("EVAL", command.toArray(String[]::new));
+    }
+
+    private int evalInteger(String script, List<String> redisKeys,
+                            List<String> arguments) {
+        return eval(script, redisKeys, arguments).toInteger();
     }
 
     private <T> T convert(JsonNode node, Class<T> type) {
@@ -670,17 +1062,25 @@ public class RedisPersistence {
         if (value == null) node.putNull(field); else node.put(field, value);
     }
 
-    private static void putStringChange(ObjectNode target, Map<String, Object> changes, String field) {
-        Object value = changes.get(field);
-        if (value instanceof String text) target.put(field, text);
-    }
-
     public record MonitoringHealthData(
         OffsetDateTime lastRunAt,
         OffsetDateTime lastSuccessfulAt,
         int monitoredSources,
         int healthySources,
         boolean healthy
+    ) {}
+
+    public record SnapshotCleanupResult(
+        OffsetDateTime cutoff,
+        int sourcesProcessed,
+        int snapshotsDeleted,
+        int staleIndexEntriesDeleted,
+        int dailyHashesUpdated
+    ) {}
+
+    public record ClaimedNotificationDelivery(
+        NotificationDelivery delivery,
+        String claimId
     ) {}
 
     public record DeviceTokenRecord(String installationId, String token) {}

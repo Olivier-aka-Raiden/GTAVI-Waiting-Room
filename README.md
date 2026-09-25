@@ -27,7 +27,7 @@ A mobile-first React PWA with a Quarkus/Upstash Redis backend that tracks offici
 
 2. **AI-assisted extraction with deterministic validation** - LangChain4j proposes structured candidates from fetched pages. Business validation rejects irrelevant retailer products, invalid enums, and unsafe URLs before data reaches snapshots, diffs, offers, or notifications.
 
-3. **Redis-backed snapshots and scheduling** - source snapshots, intervals, events, offers, devices, and preferences live in Upstash. Rate limiting and conditional HTTP caching remain planned work.
+3. **Redis-backed snapshots and scheduling** - source snapshots, intervals, events, offers, devices, and preferences live in Upstash. A daily authenticated maintenance job compacts full snapshots after 30 days. Rate limiting and conditional HTTP caching remain planned work.
 
 4. **Vercel** for frontend (matching fawzz-tv-app deployment).
 
@@ -118,12 +118,17 @@ The app uses **LangChain4j + DeepSeek** with typed DTOs for candidate extraction
 
 - Retailer AI output is treated as candidate data. A deterministic validator rejects unrelated games, music, books, merchandise, invalid values, and unsafe URLs before snapshots, diffs, offers, or notifications are written.
 - Ordinary retailer listings appear as `RETAIL` events without a major-news push. Collector listings remain critical. Price changes, out-of-stock changes, and back-in-stock changes follow the matching user preferences.
-- Change events are merged by deduplication key before FCM delivery, so replaying the same source state does not resend the event.
+- Event deduplication, the event record, its visible-event index, and one uniquely keyed notification delivery per `(eventId, installationId)` are created atomically by Redis. Replaying the same source state creates neither another event nor another delivery.
+- Notification deliveries move independently through `QUEUED`, `SENT`, `RETRY`, `INVALID_TOKEN`, and `DEAD`. A failed or invalid device never stops the rest of the batch; transient failures use exponential backoff, completed devices are not selected again, and an interrupted batch resumes from its remaining rows on the next scheduler run.
+- Device/token ownership changes and offer/entity index moves use atomic Redis scripts, preventing records and their lookup indexes from diverging during concurrent writes or process interruption.
 - Every monitor honors its own interval even though Cloud Scheduler can trigger the orchestration endpoint every ten minutes.
+- Cloud Scheduler calls `POST /internal/jobs/cleanup-snapshots` once daily with the same `X-Internal-Secret` used by monitoring. Full snapshots are kept for 30 days; older records become daily hash summaries, while the latest success and failure per source remain available in full.
 - Monitoring health is based on the latest result from all enabled sources. A stale or failed source makes the public status degraded.
 - Offers are separated by retailer, edition, and platform. Legacy relative URLs are resolved against the retailer domain, and offers missing from repeated checks become inactive.
 - Disabling notifications updates the backend eligibility flag. Re-registering the same FCM token deactivates older installations to avoid duplicate delivery.
 - The frontend is an installable PWA with an app-shell service worker. Firebase messaging uses a separate worker scope so push registration does not replace offline support.
+
+Outbox behavior is configurable with `NOTIFICATION_MAX_ATTEMPTS`, `NOTIFICATION_RETRY_BASE_SECONDS`, `NOTIFICATION_RETRY_MAX_SECONDS`, `NOTIFICATION_OUTBOX_BATCH_SIZE`, and `NOTIFICATION_DELIVERY_LEASE_SECONDS`. The monitoring job drains due deliveries before and after source checks, including runs where no source is currently due.
 
 The detailed delivery plan and the separate product-expansion workflow are documented in [docs/implementation-roadmap.md](./docs/implementation-roadmap.md).
 
@@ -180,7 +185,30 @@ docker run -d --name gtavi-redis -p 6379:6379 redis:7.4-alpine
 
 Production requires `UPSTASH_REDIS_URL`, copied exactly from Upstash's TCP/TLS connection dialog. The value starts with `rediss://`. Set it on the service running the Quarkus backend; secrets configured for the Vercel frontend are not automatically visible to Cloud Run.
 
+Set `SNAPSHOT_RETENTION_DAYS` to control full-snapshot retention (default `30`). Both internal Cloud Scheduler endpoints require `X-Internal-Secret`: `POST /internal/jobs/check-updates` triggers monitoring and `POST /internal/jobs/cleanup-snapshots` performs retention cleanup. The deployment commands in [docs/deploy-gcp.sh](./docs/deploy-gcp.sh) configure the ten-minute monitoring job and daily cleanup job.
+
 For the one-time Neo4j data transfer and production cutover, follow [docs/upstash-migration.md](./docs/upstash-migration.md).
+
+### Running backend tests
+
+The integration tests use the existing `quarkus-redis-client` extension's [Redis Dev Services](https://quarkus.io/guides/redis-dev-services). Start Docker Desktop with its Linux engine running before launching tests, including from an IDE. Quarkus creates a temporary Redis container and supplies its connection URL automatically; no Upstash credentials are needed.
+
+From `backend` on Windows:
+
+```powershell
+docker info
+.\mvnw.cmd test
+```
+
+On Linux/macOS, use `./mvnw test`. `docker info` must successfully report the server; having only the Docker client installed is insufficient. If Docker is stopped, Dev Services cannot supply a Redis host and Quarkus fails with `RedisDataSource` / `Bean is not active` before the tests run.
+
+If you already run a dedicated local test Redis without Docker, configure its connection explicitly for the test profile:
+
+```powershell
+.\mvnw.cmd test '-D%test.quarkus.redis.hosts=redis://localhost:6379' '-D%test.quarkus.redis.tls.enabled=false'
+```
+
+The explicit host makes Dev Services skip container creation. The server must already be running, and tests write seed data, devices, events, and snapshots, so use a test instance. Setting `REDIS_URL` alone does not configure tests: that variable is used by the development and production profiles.
 
 ---
 

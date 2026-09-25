@@ -9,7 +9,7 @@ This migration is designed for a zero-data-loss cutover:
 
 ## What is stored in Redis
 
-Domain objects are JSON strings stored under the `gtavi:v1` prefix. Redis sets provide lookup indexes, while sorted sets order trailers, visible events, and monitoring snapshots by timestamp. The implementation uses ordinary Redis commands rather than RedisJSON, so it works with a standard Upstash Redis database.
+Domain objects are JSON strings stored under the `gtavi:v1` prefix. Redis sets provide lookup indexes, while sorted sets order trailers, visible events, monitoring snapshots, and pending notification deliveries by timestamp. Critical multi-key writes use Redis Lua scripts, while storage remains based on ordinary Redis data types rather than RedisJSON.
 
 The migration transfers these Neo4j labels:
 
@@ -102,6 +102,6 @@ After the Redis-backed version has run successfully through several monitoring c
 
 - Use the writable/default Upstash credential, not a read-only token.
 - Keep `GTAVI_REDIS_KEY_PREFIX` stable after migration. Changing it points the app at a different logical dataset.
-- Monitor Upstash storage and command quotas, especially because source snapshots accumulate over time.
+- Monitor Upstash storage and command quotas. The daily cleanup job bounds full snapshots to 30 days, preserves the latest successful and failed snapshot per source, and retains compact daily hashes for older history.
 - Rotate the Upstash credentials immediately if a full connection URL or REST token is exposed in logs, source control, or client-side assets.
 
