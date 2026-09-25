@@ -1,5 +1,6 @@
 package com.gtavi.api.publicapi;
 
+import com.gtavi.config.RedisBackedTest;
 import com.gtavi.persistence.RedisPersistence;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
@@ -12,7 +13,7 @@ import static io.restassured.RestAssured.given;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @QuarkusTest
-class DeviceResourceTest {
+class DeviceResourceTest extends RedisBackedTest {
 
     @Inject
     RedisPersistence persistence;

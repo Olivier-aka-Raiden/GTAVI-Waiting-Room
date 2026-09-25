@@ -210,6 +210,12 @@ If you already run a dedicated local test Redis without Docker, configure its co
 
 The explicit host makes Dev Services skip container creation. The server must already be running, and tests write seed data, devices, events, and snapshots, so use a test instance. Setting `REDIS_URL` alone does not configure tests: that variable is used by the development and production profiles.
 
+Integration tests use `@QuarkusTest` and injected application beans with a real Redis Dev Service. Redis-backed tests share one Quarkus runtime but reset and reseed their unique `gtavi:test:<quarkus.uuid>` namespace before each test, and clean it afterwards. Cleanup refuses non-test namespaces and never uses `FLUSHDB` or `FLUSHALL`; a resource lock prevents overlapping fixture resets. Do not override the test key prefix with a development or production namespace.
+
+Notification tests replace only the FCM sender using Quarkus's built-in `QuarkusMock`, so CDI wiring, configured batch/retry limits, and Redis outbox behavior remain under test. The monitoring pipeline tests exercise the real monitor, normalization, validation, snapshot/event writes and offer persistence with controlled HTTP/AI boundaries. Extractor tests invoke the real generated AI services with a deterministic in-process model and assert rendered prompts and parsed DTOs. They do not accept arbitrary exceptions as success.
+
+HTML parsing uses a checked-in synthetic Next.js RSC fixture instead of fetching Rockstar's live website. Pure parsing, hashing and validation tests remain lightweight JUnit tests where starting the application adds no meaningful coverage. No real website, DeepSeek or Firebase access is required by the test suite.
+
 ---
 
 ## Free Tier Cost Analysis

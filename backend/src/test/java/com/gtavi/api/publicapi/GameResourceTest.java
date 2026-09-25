@@ -1,18 +1,20 @@
 package com.gtavi.api.publicapi;
 
+import com.gtavi.config.RedisBackedTest;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
 import org.junit.jupiter.api.Test;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Integration test for the Game REST API.
  * Uses Redis Dev Services — a container is auto-started by quarkus-redis-client.
  */
 @QuarkusTest
-class GameResourceTest {
+class GameResourceTest extends RedisBackedTest {
 
     @Test
     void testGameOverview() {
@@ -112,7 +114,7 @@ class GameResourceTest {
 
         // Trailer 2 (2025-05-06) should come before Trailer 1 (2023-12-04)
         String firstTitle = response.jsonPath().getString("[0].title");
-        assert firstTitle.contains("Trailer 2") : "Expected Trailer 2 first, got: " + firstTitle;
+        assertTrue(firstTitle.contains("Trailer 2"), "Expected Trailer 2 first, got: " + firstTitle);
     }
 }
 

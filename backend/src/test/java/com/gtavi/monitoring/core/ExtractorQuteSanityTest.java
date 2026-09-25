@@ -1,23 +1,28 @@
 package com.gtavi.monitoring.core;
 
-import io.quarkus.qute.TemplateException;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.request.ChatRequest;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.output.FinishReason;
+import dev.langchain4j.model.output.TokenUsage;
+import io.quarkus.test.junit.QuarkusMock;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
 
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Validates that @SystemMessage annotations on all extractors don't contain
- * unescaped Qute template expressions.
- * <p>
- * Qute processes @SystemMessage strings as templates. Unescaped curly braces
- * like {field1, field2} are interpreted as expressions and fail at runtime.
- * This test catches that by actually invoking each extractor — the template
- * is rendered before the LLM call, so a TemplateException means the bug is back.
- */
+/** Exercises generated AI services, prompt rendering and DTO parsing without an LLM connection. */
 @QuarkusTest
+@ResourceLock("gtavi-test-chat-model")
 class ExtractorQuteSanityTest {
+
+    private static final String HTML = "<html><body>GTA VI fixture</body></html>";
 
     @Inject RockstarMainExtractor rockstarMain;
     @Inject RockstarEditionsExtractor rockstarEditions;
@@ -25,52 +30,105 @@ class ExtractorQuteSanityTest {
     @Inject YoutubeRssExtractor youtubeRss;
     @Inject RetailerProductsExtractor retailerProducts;
 
+    private CapturingChatModel model;
+
+    @BeforeEach
+    void replaceOnlyTheRemoteModel() {
+        model = new CapturingChatModel();
+        QuarkusMock.installMockForType(model, ChatModel.class);
+    }
+
     @Test
     void rockstarMainSystemMessageRendersWithoutQuteError() {
-        assertNoQuteError(() -> rockstarMain.extract("<html></html>"));
+        model.response = """
+            {"releaseDate":"2026-11-19","platforms":["PS5"],"preorderAvailable":true}
+            """;
+        var result = rockstarMain.extract(HTML);
+        assertEquals("2026-11-19", result.releaseDate());
+        assertTrue(result.preorderAvailable());
+        assertRenderedPrompt(HTML);
     }
 
     @Test
     void rockstarEditionsSystemMessageRendersWithoutQuteError() {
-        assertNoQuteError(() -> rockstarEditions.extract("<html></html>"));
+        model.response = """
+            {"editions":[{"name":"Standard Edition","type":"STANDARD",
+            "platforms":["PS5"],"preorderAvailable":true}],"hasCollectorEdition":false}
+            """;
+        var result = rockstarEditions.extract(HTML);
+        assertEquals("Standard Edition", result.editions().getFirst().name());
+        assertFalse(result.hasCollectorEdition());
+        assertRenderedPrompt(HTML);
     }
 
     @Test
     void rockstarMediaSystemMessageRendersWithoutQuteError() {
-        assertNoQuteError(() -> rockstarMedia.extract("<html></html>"));
+        model.response = videoResponse();
+        var result = rockstarMedia.extract(HTML);
+        assertEquals("TRAILER", result.videos().getFirst().mediaType());
+        assertRenderedPrompt(HTML);
     }
 
     @Test
     void youtubeRssSystemMessageRendersWithoutQuteError() {
-        assertNoQuteError(() -> youtubeRss.extract("<rss></rss>"));
+        String xml = "<rss><title>GTA VI fixture</title></rss>";
+        model.response = videoResponse();
+        var result = youtubeRss.extract(xml);
+        assertEquals("GTA VI Trailer 2", result.videos().getFirst().title());
+        assertRenderedPrompt(xml);
     }
 
     @Test
     void retailerProductsSystemMessageRendersWithoutQuteError() {
-        assertNoQuteError(() -> retailerProducts.extract("<html></html>"));
+        model.response = """
+            {"products":[{"name":"GTA VI Standard Edition","edition":"STANDARD",
+            "price":79.9,"currency":"CHF","availability":"PREORDER",
+            "url":"https://example.test/gta-vi","platform":"PS5"}]}
+            """;
+        var result = retailerProducts.extract(HTML);
+        assertEquals("GTA VI Standard Edition", result.products().getFirst().name());
+        assertEquals(79.9, result.products().getFirst().price());
+        assertRenderedPrompt(HTML);
     }
 
-    /**
-     * Invoke the extractor. If Qute finds an unescaped template expression,
-     * it throws TemplateException BEFORE the LLM call — we catch that and fail.
-     * Any other exception (LLM backend not configured in test) is fine.
-     */
-    private void assertNoQuteError(Runnable call) {
-        try {
-            call.run();
-        } catch (Exception e) {
-            if (isQuteError(e)) {
-                fail("Qute TemplateException in @SystemMessage — unescaped { braces? " + e.getMessage());
-            }
-            // Expected: LLM backend not available in tests → OK
-        }
+    private void assertRenderedPrompt(String input) {
+        assertEquals(1, model.calls, "A rendered prompt must reach the model exactly once");
+        assertNotNull(model.request);
+        assertTrue(model.request.messages().stream()
+            .filter(SystemMessage.class::isInstance)
+            .map(SystemMessage.class::cast)
+            .anyMatch(message -> !message.text().isBlank()));
+        var user = model.request.messages().stream()
+            .filter(UserMessage.class::isInstance)
+            .map(UserMessage.class::cast)
+            .findFirst().orElseThrow();
+        assertTrue(user.singleText().contains(input), "The user template must interpolate its input");
+        assertFalse(user.singleText().contains("{{html}}"));
+        assertFalse(user.singleText().contains("{{xml}}"));
     }
 
-    private boolean isQuteError(Throwable t) {
-        while (t != null) {
-            if (t instanceof TemplateException) return true;
-            t = t.getCause();
+    private static String videoResponse() {
+        return """
+            {"videos":[{"title":"GTA VI Trailer 2","mediaType":"TRAILER",
+            "publicationDate":"2025-05-06","videoUrl":"https://example.test/trailer"}]}
+            """;
+    }
+
+    static final class CapturingChatModel implements ChatModel {
+        String response;
+        ChatRequest request;
+        int calls;
+
+        @Override
+        public ChatResponse doChat(ChatRequest request) {
+            this.request = request;
+            calls++;
+            assertNotNull(response, "Each test must supply its model response");
+            return ChatResponse.builder()
+                .aiMessage(AiMessage.from(response))
+                .tokenUsage(new TokenUsage(1, 1))
+                .finishReason(FinishReason.STOP)
+                .build();
         }
-        return false;
     }
 }

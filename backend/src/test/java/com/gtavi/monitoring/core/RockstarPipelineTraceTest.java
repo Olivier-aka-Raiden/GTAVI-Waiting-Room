@@ -2,129 +2,123 @@ package com.gtavi.monitoring.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gtavi.config.RedisBackedTest;
+import com.gtavi.domain.RetailOffer;
+import com.gtavi.persistence.RedisPersistence;
+import io.quarkus.test.junit.QuarkusMock;
+import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Method;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Traces the exact AI response from the Cloud Run logs through
- * editionsToProducts → RetailerProductValidator → persistOffers.
- */
-public class RockstarPipelineTraceTest {
+/** Runs the real monitor, conversion, validation and persistence; only remote boundaries are replaced. */
+@QuarkusTest
+class RockstarPipelineTraceTest extends RedisBackedTest {
 
-    private static final ObjectMapper mapper = new ObjectMapper();
+    private static final String SOURCE = "ROCKSTAR_STORE";
+    private static final String URL = "https://www.rockstargames.com/VI/editions";
 
-    /**
-     * The exact AI response body captured from Cloud Run logs
-     * (revision 00040-gwm, 2026-07-19T19:19:20Z)
-     */
-    private static final String AI_RESPONSE = """
-    {
-      "editions": [
-        {
-          "name": "Ultimate Edition",
-          "type": "ULTIMATE",
-          "description": "An exclusive collection of items threaded across all aspects of Jason and Lucia's story.",
-          "features": ["Grand Theft Auto VI", "Vintage Vice City Pack (Pre-order Bonus)"],
-          "platforms": [],
-          "preorderAvailable": true
-        },
-        {
-          "name": "Standard Edition",
-          "type": "STANDARD",
-          "description": "Get the standard edition of Grand Theft Auto VI along with pre-order bonuses.",
-          "features": ["Grand Theft Auto VI", "Vintage Vice City Pack (Pre-order Bonus)"],
-          "platforms": [],
-          "preorderAvailable": true
-        }
-      ],
-      "hasCollectorEdition": false
-    }""";
+    @Inject ObjectMapper mapper;
+    @Inject MonitoringOrchestrator orchestrator;
+    @Inject RedisPersistence persistence;
+
+    private boolean fetchFails;
+    private int fetchCalls;
+    private int extractionCalls;
+
+    @BeforeEach
+    void replaceRemoteBoundaries() throws Exception {
+        String html = fixture("rockstar-editions-rsc.html");
+        JsonNode editions = mapper.readTree(fixture("rockstar-editions-response.json"));
+        QuarkusMock.installMockForType(new HttpFetcher() {
+            @Override
+            public String fetch(String url) throws IOException {
+                fetchCalls++;
+                assertEquals(URL, url, "Only the explicitly requested monitor should run");
+                if (fetchFails) throw new IOException("simulated remote outage");
+                return html;
+            }
+        }, HttpFetcher.class);
+        QuarkusMock.installMockForType(new AiExtractionService() {
+            @Override
+            public JsonNode extractFromHtml(String content, String sourceType) {
+                extractionCalls++;
+                assertEquals("rockstar_editions", sourceType);
+                assertTrue(content.contains("Ultimate Edition"));
+                assertFalse(content.contains("<script"), "The real monitor must extract the SPA content");
+                return editions.deepCopy();
+            }
+        }, AiExtractionService.class);
+    }
 
     @Test
-    void traceFullPipeline() throws Exception {
-        JsonNode aiData = mapper.readTree(AI_RESPONSE);
+    void traceFullPipelineAndReplayWithoutDuplicatingOffersOrEvents() {
+        var first = orchestrator.runCheck(Set.of(SOURCE));
+        assertEquals(1, first.checkedSources());
+        assertEquals(1, first.successfulSources());
+        assertEquals(0, first.failedSources());
+        var snapshot = persistence.getLatestSuccessfulSnapshotData(SOURCE);
+        assertNotNull(snapshot);
+        assertEquals(4, snapshot.path("products").size());
+        assertPersistedOffers("ed-standard");
+        assertPersistedOffers("ed-ultimate");
+        long eventsAfterFirstRun = persistence.getEventCount("GTA_VI");
 
-        // Step 1: Verify AI response has editions but NOT products
-        assertTrue(aiData.has("editions"), "AI response must have 'editions'");
-        assertEquals(2, aiData.get("editions").size(), "Should have 2 editions");
-        assertFalse(aiData.has("products"), "AI response should NOT have 'products' yet");
+        var replay = orchestrator.runCheck(Set.of(SOURCE));
+        assertEquals(1, replay.successfulSources());
+        assertEquals(0, replay.eventsCreated());
+        assertEquals(eventsAfterFirstRun, persistence.getEventCount("GTA_VI"));
+        assertPersistedOffers("ed-standard");
+        assertPersistedOffers("ed-ultimate");
+        assertEquals(2, fetchCalls);
+        assertEquals(2, extractionCalls);
+    }
 
-        // Step 2: editionsToProducts conversion (simulates RockstarStoreMonitor logic)
-        JsonNode editions = aiData.get("editions");
-        var productsNode = mapper.createArrayNode();
-        for (JsonNode edition : editions) {
-            String name = edition.get("name").asText();
-            String type = edition.get("type").asText();
-            boolean preorder = edition.get("preorderAvailable").asBoolean();
+    @Test
+    void failedFetchKeepsTheLastSuccessfulSnapshotAndOffers() {
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        JsonNode previous = persistence.getLatestSuccessfulSnapshotData(SOURCE);
+        fetchFails = true;
 
-            for (String platform : new String[]{"PS5", "XSX"}) {
-                var product = mapper.createObjectNode();
-                product.put("name", name);
-                product.put("edition", type);
-                product.put("platform", platform);
-                product.put("availability", preorder ? "PREORDER" : "UNKNOWN");
-                product.putNull("price");
-                product.putNull("currency");
-                product.put("url", "https://www.rockstargames.com/VI/editions");
-                productsNode.add(product);
-            }
+        var failed = orchestrator.runCheck(Set.of(SOURCE));
+        assertEquals(1, failed.checkedSources());
+        assertEquals(1, failed.failedSources());
+        assertEquals(0, failed.successfulSources());
+        assertEquals(0, failed.eventsCreated());
+        assertEquals(previous, persistence.getLatestSuccessfulSnapshotData(SOURCE));
+        assertPersistedOffers("ed-standard");
+        assertPersistedOffers("ed-ultimate");
+        assertEquals(2, fetchCalls);
+        assertEquals(1, extractionCalls, "An unsuccessful fetch must not reach the AI boundary");
+    }
+
+    private void assertPersistedOffers(String editionId) {
+        var offers = persistence.getOffers(editionId);
+        assertEquals(2, offers.size());
+        assertEquals(Set.of("PS5", "XSX"), offers.stream()
+            .map(RetailOffer::getPlatform).collect(Collectors.toSet()));
+        for (var offer : offers) {
+            assertEquals(SOURCE + ":" + editionId + ":" + offer.getPlatform(), offer.getId());
+            assertEquals(editionId, offer.getEditionId());
+            assertEquals(SOURCE, offer.getRetailerCode());
+            assertEquals("PREORDER_AVAILABLE", offer.getAvailabilityStatus());
+            assertTrue(offer.isPreorderAvailable());
+            assertEquals(URL, offer.getUrl());
+            assertEquals("US", offer.getCountryCode());
+            assertEquals("USD", offer.getCurrency());
+            assertNull(offer.getPrice());
         }
-        var productsData = mapper.createObjectNode();
-        productsData.set("products", productsNode);
-
-        assertEquals(4, productsNode.size(), "Should generate 4 products (2 editions × 2 platforms)");
-
-        // Step 3: Run through RetailerProductValidator
-        RetailerProductValidator validator = new RetailerProductValidator();
-        JsonNode validated = validator.validate("ROCKSTAR_STORE",
-            "https://www.rockstargames.com/VI/editions", productsData);
-
-        JsonNode acceptedProducts = validated.get("products");
-        assertNotNull(acceptedProducts, "Validated data must have 'products'");
-        assertEquals(4, acceptedProducts.size(),
-            "All 4 products should pass validation. Got: " + acceptedProducts.size());
-
-        // Print details of accepted products
-        for (JsonNode p : acceptedProducts) {
-            System.out.printf("  ACCEPTED: %s | edition=%s | platform=%s | avail=%s | url=%s%n",
-                p.get("name").asText(),
-                p.get("edition").asText(),
-                p.get("platform").asText(),
-                p.get("availability").asText(),
-                p.get("url").asText());
-        }
-
-        // Step 4: Verify each product would match an edition ID
-        for (JsonNode p : acceptedProducts) {
-            String edition = p.get("edition").asText().toLowerCase();
-            String name = p.get("name").asText().toLowerCase();
-
-            // Simulate matchEdition logic
-            boolean editionMatch = edition.contains("standard") || edition.contains("ultimate")
-                || edition.contains("collector") || edition.contains("deluxe");
-            boolean nameMatch = name.contains("standard") || name.contains("ultimate")
-                || name.contains("collector") || name.contains("deluxe");
-
-            assertTrue(editionMatch || nameMatch,
-                "Product '" + p.get("name").asText() + "' must match an edition: edition="
-                + p.get("edition").asText());
-        }
-
-        // Step 5: isGtaViGameProduct check
-        assertTrue(RetailerProductValidator.isGtaViGameProduct("Ultimate Edition"),
-            "'Ultimate Edition' should be recognized as a game product");
-        assertTrue(RetailerProductValidator.isGtaViGameProduct("Standard Edition"),
-            "'Standard Edition' should be recognized as a game product");
-        assertFalse(RetailerProductValidator.isGtaViGameProduct("Grand Theft Auto V"),
-            "'Grand Theft Auto V' should be rejected");
     }
 
     @Test
     void verifyEditionTypesAreRecognized() {
-        // The editionsToProducts passes the raw AI type through
         assertTrue(RetailerProductValidator.isGtaViGameProduct("Ultimate Edition"));
         assertTrue(RetailerProductValidator.isGtaViGameProduct("Standard Edition"));
         assertTrue(RetailerProductValidator.isGtaViGameProduct("Collector's Edition"));
@@ -133,11 +127,15 @@ public class RockstarPipelineTraceTest {
 
     @Test
     void verifyNonGameProductsAreRejected() {
-        assertFalse(RetailerProductValidator.isGtaViGameProduct("GTA V Premium Edition"),
-            "GTA V should be rejected");
-        assertFalse(RetailerProductValidator.isGtaViGameProduct("Soundtrack"),
-            "Soundtrack should be rejected");
-        assertFalse(RetailerProductValidator.isGtaViGameProduct(""),
-            "Empty should be rejected");
+        assertFalse(RetailerProductValidator.isGtaViGameProduct("GTA V Premium Edition"));
+        assertFalse(RetailerProductValidator.isGtaViGameProduct("Soundtrack"));
+        assertFalse(RetailerProductValidator.isGtaViGameProduct(""));
+    }
+
+    private String fixture(String name) throws IOException {
+        try (var stream = getClass().getResourceAsStream("/fixtures/" + name)) {
+            assertNotNull(stream, "Missing fixture: " + name);
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 }

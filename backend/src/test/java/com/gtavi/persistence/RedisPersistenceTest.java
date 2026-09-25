@@ -1,5 +1,6 @@
 package com.gtavi.persistence;
 
+import com.gtavi.config.RedisBackedTest;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gtavi.domain.ChangeEvent;
 import io.quarkus.test.junit.QuarkusTest;
@@ -20,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @QuarkusTest
-class RedisPersistenceTest {
+class RedisPersistenceTest extends RedisBackedTest {
 
     @Inject
     RedisPersistence persistence;

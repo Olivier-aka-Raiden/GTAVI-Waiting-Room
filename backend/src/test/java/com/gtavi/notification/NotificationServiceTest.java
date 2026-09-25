@@ -1,18 +1,19 @@
 package com.gtavi.notification;
 
+import com.gtavi.config.RedisBackedTest;
 import com.gtavi.domain.ChangeEvent;
 import com.gtavi.domain.NotificationDeliveryStatus;
 import com.gtavi.notification.fcm.FcmHttpSender;
 import com.gtavi.persistence.RedisPersistence;
 import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.QuarkusMock;
 import jakarta.inject.Inject;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,16 +24,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @QuarkusTest
-class NotificationServiceTest {
+class NotificationServiceTest extends RedisBackedTest {
 
     @Inject
     RedisPersistence persistence;
 
-    private final List<String> registeredInstallations = new ArrayList<>();
+    @Inject
+    NotificationService service;
 
-    @AfterEach
-    void deactivateTestDevices() {
-        registeredInstallations.forEach(persistence::deactivateDevice);
+    private FakeFcmSender sender;
+
+    @BeforeEach
+    void replaceOnlyTheRemoteFcmBoundary() {
+        sender = new FakeFcmSender();
+        QuarkusMock.installMockForType(sender, FcmHttpSender.class);
     }
 
     @Test
@@ -45,9 +50,7 @@ class NotificationServiceTest {
         register(firstInstallation, firstToken);
         register(secondInstallation, secondToken);
 
-        FakeFcmSender sender = new FakeFcmSender();
         sender.failOnce.add(secondToken);
-        NotificationService service = service(sender, 3, 100);
         ChangeEvent event = event(unique);
 
         var queued = service.saveEventAndQueue(event);
@@ -77,45 +80,50 @@ class NotificationServiceTest {
         String unique = UUID.randomUUID().toString();
         String firstInstallation = "outbox-batch-first-" + unique;
         String secondInstallation = "outbox-batch-second-" + unique;
+        String thirdInstallation = "outbox-batch-third-" + unique;
         String firstToken = "token-batch-first-" + unique;
         String secondToken = "token-batch-second-" + unique;
+        String thirdToken = "token-batch-third-" + unique;
         register(firstInstallation, firstToken);
         register(secondInstallation, secondToken);
-
-        FakeFcmSender sender = new FakeFcmSender();
-        NotificationService service = service(sender, 3, 1);
+        register(thirdInstallation, thirdToken);
         ChangeEvent event = event("batch-" + unique);
 
-        assertEquals(2, service.saveEventAndQueue(event).deliveriesQueued());
-        assertEquals(1, service.processPendingDeliveries());
-        assertEquals(1, sender.calls.values().stream().mapToInt(Integer::intValue).sum());
+        assertEquals(3, service.saveEventAndQueue(event).deliveriesQueued());
+        assertEquals(2, service.processPendingDeliveries());
+        assertEquals(2, sender.calls.values().stream().mapToInt(Integer::intValue).sum());
 
         assertEquals(1, service.processPendingDeliveries());
         assertEquals(1, sender.calls.get(firstToken));
         assertEquals(1, sender.calls.get(secondToken));
+        assertEquals(1, sender.calls.get(thirdToken));
         assertEquals(NotificationDeliveryStatus.SENT,
             persistence.getNotificationDelivery(event.getId(), firstInstallation).status());
         assertEquals(NotificationDeliveryStatus.SENT,
             persistence.getNotificationDelivery(event.getId(), secondInstallation).status());
+        assertEquals(NotificationDeliveryStatus.SENT,
+            persistence.getNotificationDelivery(event.getId(), thirdInstallation).status());
+        assertEquals(0, service.processPendingDeliveries());
     }
 
     @Test
     void senderExceptionForOneDeviceDoesNotStopOtherDeliveries() {
         String unique = UUID.randomUUID().toString();
-        String failingInstallation = "outbox-throwing-" + unique;
-        String healthyInstallation = "outbox-healthy-" + unique;
+        // Equal due times are ordered by the event/installation key in Redis.
+        String failingInstallation = "outbox-0-throwing-" + unique;
+        String healthyInstallation = "outbox-1-healthy-" + unique;
         String failingToken = "token-throwing-" + unique;
         String healthyToken = "token-healthy-" + unique;
         register(failingInstallation, failingToken);
         register(healthyInstallation, healthyToken);
 
-        FakeFcmSender sender = new FakeFcmSender();
         sender.throwOnce.add(failingToken);
-        NotificationService service = service(sender, 3, 100);
         ChangeEvent event = event("throwing-" + unique);
 
         assertEquals(2, service.saveEventAndQueue(event).deliveriesQueued());
         assertEquals(1, service.processPendingDeliveries());
+        assertEquals(List.of(failingToken, healthyToken), sender.calls.keySet().stream().toList(),
+            "The healthy recipient must be processed after the sender throws");
         assertEquals(NotificationDeliveryStatus.RETRY,
             persistence.getNotificationDelivery(event.getId(), failingInstallation).status());
         assertEquals(NotificationDeliveryStatus.SENT,
@@ -127,22 +135,30 @@ class NotificationServiceTest {
     }
 
     @Test
-    void invalidTokenIsTerminalAndDeactivatesTheDevice() {
+    void invalidTokenIsTerminalWithoutBlockingAHealthyDevice() {
         String unique = UUID.randomUUID().toString();
         String installationId = "outbox-invalid-" + unique;
         String token = "token-invalid-" + unique;
+        String healthyInstallation = "outbox-valid-" + unique;
+        String healthyToken = "token-valid-" + unique;
         register(installationId, token);
-        FakeFcmSender sender = new FakeFcmSender();
+        register(healthyInstallation, healthyToken);
         sender.invalid.add(token);
-        NotificationService service = service(sender, 3, 100);
         ChangeEvent event = event("invalid-" + unique);
 
         assertTrue(service.saveEventAndQueue(event).created());
-        assertEquals(0, service.processPendingDeliveries());
+        assertEquals(1, service.processPendingDeliveries());
+        assertEquals(List.of(token, healthyToken), sender.calls.keySet().stream().toList(),
+            "An invalid token must not stop the following healthy delivery");
 
         assertEquals(NotificationDeliveryStatus.INVALID_TOKEN,
             persistence.getNotificationDelivery(event.getId(), installationId).status());
         assertFalse(persistence.isDeviceNotificationsEnabled(installationId));
+        assertEquals(NotificationDeliveryStatus.SENT,
+            persistence.getNotificationDelivery(event.getId(), healthyInstallation).status());
+        assertEquals(0, service.processPendingDeliveries());
+        assertEquals(1, sender.calls.get(token));
+        assertEquals(1, sender.calls.get(healthyToken));
     }
 
     @Test
@@ -151,9 +167,7 @@ class NotificationServiceTest {
         String installationId = "outbox-dead-" + unique;
         String token = "token-dead-" + unique;
         register(installationId, token);
-        FakeFcmSender sender = new FakeFcmSender();
         sender.alwaysFail.add(token);
-        NotificationService service = service(sender, 2, 100);
         ChangeEvent event = event("dead-" + unique);
 
         assertTrue(service.saveEventAndQueue(event).created());
@@ -161,28 +175,19 @@ class NotificationServiceTest {
         assertEquals(NotificationDeliveryStatus.RETRY,
             persistence.getNotificationDelivery(event.getId(), installationId).status());
         service.processPendingDeliveries();
+        assertEquals(NotificationDeliveryStatus.RETRY,
+            persistence.getNotificationDelivery(event.getId(), installationId).status());
+        service.processPendingDeliveries();
 
         var delivery = persistence.getNotificationDelivery(event.getId(), installationId);
         assertEquals(NotificationDeliveryStatus.DEAD, delivery.status());
-        assertEquals(2, delivery.attempts());
-        assertEquals(2, sender.calls.get(token));
-    }
-
-    private NotificationService service(FakeFcmSender sender, int attempts, int batchSize) {
-        NotificationService service = new NotificationService();
-        service.persistence = persistence;
-        service.fcmSender = sender;
-        service.maxAttempts = attempts;
-        service.retryBaseSeconds = 0;
-        service.retryMaxSeconds = 0;
-        service.outboxBatchSize = batchSize;
-        service.deliveryLeaseSeconds = 30;
-        return service;
+        assertEquals(3, delivery.attempts());
+        assertEquals(3, sender.calls.get(token));
+        assertEquals(0, service.processPendingDeliveries());
     }
 
     private void register(String installationId, String token) {
         persistence.registerDevice(installationId, token, "WEB", "en", "1");
-        registeredInstallations.add(installationId);
     }
 
     private ChangeEvent event(String unique) {
@@ -200,7 +205,7 @@ class NotificationServiceTest {
     }
 
     static final class FakeFcmSender extends FcmHttpSender {
-        final Map<String, Integer> calls = new HashMap<>();
+        final Map<String, Integer> calls = new LinkedHashMap<>();
         final Set<String> failOnce = new HashSet<>();
         final Set<String> throwOnce = new HashSet<>();
         final Set<String> alwaysFail = new HashSet<>();

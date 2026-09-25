@@ -1,5 +1,6 @@
 package com.gtavi.api.internal;
 
+import com.gtavi.config.RedisBackedTest;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
@@ -9,7 +10,7 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
 
 @QuarkusTest
-class MonitoringResourceTest {
+class MonitoringResourceTest extends RedisBackedTest {
 
     @Test
     void rejectsMissingSecret() {

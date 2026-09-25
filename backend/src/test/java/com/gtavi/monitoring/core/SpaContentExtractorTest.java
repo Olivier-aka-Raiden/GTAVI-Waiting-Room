@@ -2,10 +2,7 @@ package com.gtavi.monitoring.core;
 
 import org.junit.jupiter.api.Test;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -13,19 +10,13 @@ class SpaContentExtractorTest {
 
     @Test
     void shouldExtractVisibleContentFromRockstarEditionsPage() throws Exception {
-        HttpClient client = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.ALWAYS)
-            .build();
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create("https://www.rockstargames.com/VI/editions"))
-            .header("User-Agent", "Mozilla/5.0")
-            .GET()
-            .build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-        assertEquals(200, response.statusCode(), "Editions page should be accessible");
-
-        String content = SpaContentExtractor.extractContent(response.body());
+        String html;
+        try (var fixture = getClass().getResourceAsStream("/fixtures/rockstar-editions-rsc.html")) {
+            assertNotNull(fixture, "The offline RSC fixture must be on the test classpath");
+            html = new String(fixture.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        String content = SpaContentExtractor.extractContent(html);
+        assertNotEquals(html, content, "The RSC payloads must actually be extracted");
 
         assertNotNull(content, "Content should not be null");
         assertFalse(content.isBlank(), "Content should not be blank");
@@ -54,9 +45,10 @@ class SpaContentExtractorTest {
         assertTrue(content.contains("Grand Theft Auto"),
             "Should contain game title");
 
-        System.out.println("=== Extracted content (first 1500 chars) ===");
-        System.out.println(content.substring(0, Math.min(1500, content.length())));
-        System.out.println("=== Total length: " + content.length() + " chars ===");
+        assertFalse(content.contains("<script"));
+        assertFalse(content.contains("/VI/_next/"));
+        assertFalse(content.contains("css-card-token"));
+        assertFalse(content.contains("tracking.png"));
     }
 
     @Test
@@ -68,7 +60,7 @@ class SpaContentExtractorTest {
     }
 
     @Test
-    void shouldHandleEmptyAndNullInput() {
+    void shouldHandleEmptyHtml() {
         String empty = SpaContentExtractor.extractContent("");
         assertNotNull(empty);
 
