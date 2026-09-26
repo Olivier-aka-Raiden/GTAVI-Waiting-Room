@@ -22,6 +22,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: node --test scripts/news.test.mjs
       - run: npm run build
 
   backend:
@@ -30,7 +31,7 @@ jobs:
       run:
         working-directory: backend
     env:
-      # Java 26 preview flags required by .mvn/jvm.config and pom.xml
+      # Java 25 preview flags required by .mvn/jvm.config and pom.xml
       MAVEN_OPTS: --enable-preview --add-opens java.base/java.lang=ALL-UNNAMED --add-opens java.base/java.lang.invoke=ALL-UNNAMED --add-opens java.base/java.util=ALL-UNNAMED
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +39,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "26"
+          java-version: "25"
           cache: maven
           cache-dependency-path: backend/pom.xml
 

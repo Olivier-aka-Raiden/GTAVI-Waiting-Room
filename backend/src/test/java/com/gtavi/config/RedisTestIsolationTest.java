@@ -20,9 +20,9 @@ class RedisTestIsolationTest extends RedisBackedTest {
 
     @RepeatedTest(2)
     void everyInvocationStartsWithOnlySeedSources() {
-        assertEquals(8, persistence.getMonitoringHealth().monitoredSources());
-        persistence.saveSourceDefinitionIfAbsent(Map.of("code", "ISOLATION_TEST", "enabled", true));
         assertEquals(9, persistence.getMonitoringHealth().monitoredSources());
+        persistence.saveSourceDefinitionIfAbsent(Map.of("code", "ISOLATION_TEST", "enabled", true));
+        assertEquals(10, persistence.getMonitoringHealth().monitoredSources());
     }
 
     @Test
@@ -36,7 +36,7 @@ class RedisTestIsolationTest extends RedisBackedTest {
             resetRedisFixtures();
             assertFalse(redis.key().exists(ownKey));
             assertEquals("unrelated", values.get(otherKey));
-            assertEquals(8, persistence.getMonitoringHealth().monitoredSources());
+            assertEquals(9, persistence.getMonitoringHealth().monitoredSources());
         } finally {
             redis.key().del(otherKey);
         }

@@ -26,7 +26,7 @@ interface ToggleDef {
 const TOGGLES: ToggleDef[] = [
   {
     key: 'collectorEditionAnnouncement',
-    label: "Collector's Edition announcement",
+    label: "Collector editions & collectibles",
     description: 'When Rockstar officially announces a Collector\'s Edition',
   },
   {
@@ -47,7 +47,7 @@ const TOGGLES: ToggleDef[] = [
   {
     key: 'majorRockstarNews',
     label: 'Major Rockstar announcements',
-    description: 'New editions, pre-order openings, major news',
+    description: 'Music and albums, new editions, pre-order openings, major news',
   },
   {
     key: 'backInStock',

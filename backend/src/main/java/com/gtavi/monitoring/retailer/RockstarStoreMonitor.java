@@ -49,7 +49,7 @@ public class RockstarStoreMonitor implements GameSourceMonitor {
 
     /**
      * Convert RockstarEditionsData (editions array) to the products format
-     * that the retailer pipeline expects. Each edition gets a PS5 and XSX variant.
+     * that the retailer pipeline expects. Only explicitly observed platforms create offers.
      */
     private JsonNode editionsToProducts(JsonNode editionsData) {
         var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -67,7 +67,8 @@ public class RockstarStoreMonitor implements GameSourceMonitor {
             boolean preorder = edition.has("preorderAvailable") && edition.get("preorderAvailable").asBoolean();
 
             // Create a product entry for each platform Rockstar links to
-            for (String platform : new String[]{"PS5", "XSX"}) {
+            for (JsonNode platformNode : edition.path("platforms")) {
+                String platform=platformNode.asText();
                 var product = mapper.createObjectNode();
                 product.put("name", name != null ? name : type);
                 product.put("edition", type);
@@ -81,6 +82,7 @@ public class RockstarStoreMonitor implements GameSourceMonitor {
         }
 
         var result = mapper.createObjectNode();
+        result.set("editions", editions);
         result.set("products", products);
         return result;
     }

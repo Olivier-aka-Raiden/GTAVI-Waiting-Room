@@ -136,26 +136,21 @@ public class FcmHttpSender {
 
     // ── Payload builder ──
 
-    private String buildPayload(String token, String title, String body, Map<String, String> data) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"message\":{");
-        sb.append("\"token\":\"").append(escapeJson(token)).append("\",");
-        sb.append("\"notification\":{");
-        sb.append("\"title\":\"").append(escapeJson(title)).append("\",");
-        sb.append("\"body\":\"").append(escapeJson(body)).append("\"}");
-        if (data != null && !data.isEmpty()) {
-            sb.append(",\"data\":{");
-            boolean first = true;
-            for (var entry : data.entrySet()) {
-                if (!first) sb.append(",");
-                sb.append("\"").append(escapeJson(entry.getKey()))
-                  .append("\":\"").append(escapeJson(entry.getValue())).append("\"");
-                first = false;
-            }
-            sb.append("}");
+    static String buildPayload(String token, String title, String body, Map<String, String> data) {
+        var payloadData = new java.util.LinkedHashMap<String,String>();
+        if (data != null) payloadData.putAll(data);
+        payloadData.put("title", title == null ? "GTA VI update" : title);
+        payloadData.put("body", body == null ? "" : body);
+        StringBuilder sb = new StringBuilder("{\"message\":{\"token\":\"");
+        sb.append(escapeJson(token)).append("\",\"data\":{");
+        boolean first = true;
+        for (var entry : payloadData.entrySet()) {
+            if (!first) sb.append(",");
+            sb.append("\"").append(escapeJson(entry.getKey())).append("\":\"")
+                .append(escapeJson(entry.getValue())).append("\"");
+            first = false;
         }
-        sb.append(",\"android\":{\"priority\":\"high\"}");
-        sb.append("}}");
+        sb.append("},\"android\":{\"priority\":\"high\"},\"webpush\":{\"headers\":{\"Urgency\":\"high\"}}}}");
         return sb.toString();
     }
 

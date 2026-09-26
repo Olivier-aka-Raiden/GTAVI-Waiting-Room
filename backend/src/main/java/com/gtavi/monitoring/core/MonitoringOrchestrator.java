@@ -23,6 +23,8 @@ import java.util.Set;
 @ApplicationScoped
 public class MonitoringOrchestrator {
 
+    @jakarta.inject.Inject com.gtavi.news.NewsRepository processing;
+    @jakarta.inject.Inject GameProjectionService projections;
     private final RedisPersistence persistence;
     private final Normalizer normalizer;
     private final DiffEngine diffEngine;
@@ -54,9 +56,14 @@ public class MonitoringOrchestrator {
 
         List<GameSourceMonitor> monitors = getDueMonitors(sourceCodes);
         for (GameSourceMonitor monitor : monitors) {
+            String lockName="pipeline:"+monitor.sourceCode();
+            String token=processing.acquire(lockName);
+            if (token==null) continue;
             checked++;
             try {
-                MonitorResult result = monitor.fetchCurrentState();
+                JsonNode staged=processing.read("observation:"+monitor.sourceCode());
+                MonitorResult result = staged==null ? monitor.fetchCurrentState()
+                    : MonitorResult.success(monitor.sourceCode(),monitor.sourceUrl(),staged,null);
                 if (result.isSuccess() && result.normalizedData() != null) {
                     JsonNode currentData = result.normalizedData();
                     if (isRetailer(monitor.sourceCode())) {
@@ -64,15 +71,24 @@ public class MonitoringOrchestrator {
                             monitor.sourceCode(), monitor.sourceUrl(), currentData);
                     }
 
+                    processing.assertOwner(lockName,token);
+                    if (staged==null) processing.write("occurrence:"+monitor.sourceCode(),
+                        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode().put("id",java.util.UUID.randomUUID().toString()));
+                    processing.write("observation:"+monitor.sourceCode(),currentData);
                     String hash = normalizer.computeHash(currentData);
                     JsonNode previous = persistence.getLatestSuccessfulSnapshotData(monitor.sourceCode());
-                    persistence.saveSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
-                        currentData, hash, true, null);
+
 
                     List<ChangeEvent> events = diffEngine.diff(
                         monitor.sourceCode(), monitor.sourceUrl(), previous, currentData);
+                    var occurrence=processing.read("occurrence:"+monitor.sourceCode());
+                    String occurrenceId=occurrence==null ? hash : occurrence.path("id").asText();
+                    projections.project(monitor.sourceCode(),monitor.sourceUrl(),currentData);
                     int createdForSource = 0;
                     for (ChangeEvent event : events) {
+                        if (Set.of("OUT_OF_STOCK","BACK_IN_STOCK","PRICE_CHANGED","RELEASE_DATE_CHANGED",
+                                "PREORDER_OPENED","PREORDER_CLOSED").contains(event.getEventType()))
+                            event.setDeduplicationKey(event.getDeduplicationKey()+":"+occurrenceId);
                         var queued = notificationService.saveEventAndQueue(event);
                         if (!queued.created()) {
                             Log.debugf("Skipping duplicate event: %s", event.getDeduplicationKey());
@@ -90,6 +106,11 @@ public class MonitoringOrchestrator {
                         persistOffers(monitor.sourceCode(), currentData);
                     }
 
+                    processing.assertOwner(lockName,token);
+                    // Advance the comparison baseline only after events and projections are durable.
+                    persistence.saveSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
+                        currentData, hash, true, null);
+                    processing.delete("observation:"+monitor.sourceCode());
                     successful++;
                     Log.infof("Monitor %s: SUCCESS (hash=%s, %d events)",
                         monitor.sourceCode(), hash != null ? hash.substring(0, 8) : "null",
@@ -107,6 +128,8 @@ public class MonitoringOrchestrator {
                     null, null, false, e.getMessage());
                 failed++;
                 Log.errorf(e, "Monitor %s: unexpected error", monitor.sourceCode());
+            } finally {
+                processing.release(lockName,token);
             }
         }
 
@@ -129,6 +152,8 @@ public class MonitoringOrchestrator {
         int discovered = 0;
         for (GameSourceMonitor monitor : allMonitors) {
             discovered++;
+            JsonNode definition=persistence.getSourceDefinition(monitor.sourceCode());
+            if (definition!=null && !definition.path("enabled").asBoolean(true)) continue;
             boolean explicitlyRequested = !sourceCodes.isEmpty()
                 && sourceCodes.contains(monitor.sourceCode());
             if (explicitlyRequested || (sourceCodes.isEmpty() && isDue(monitor))) {
@@ -176,8 +201,7 @@ public class MonitoringOrchestrator {
             String editionId = aiEdition != null ? matchEdition(aiEdition, knownEditionIds) : null;
             if (editionId == null) editionId = matchEdition(productName, knownEditionIds);
             if (editionId == null) {
-                Log.debugf("Could not match product '%s' to any known edition", productName);
-                continue;
+                editionId=projections.ensureRetailEdition(productName,sourceCode);
             }
 
             String url = product.has("url") ? product.get("url").asText() : null;
@@ -193,9 +217,12 @@ public class MonitoringOrchestrator {
             BigDecimal price = priceText == null || priceText.isBlank()
                 ? null : new BigDecimal(priceText);
             String currency = product.hasNonNull("currency")
-                ? product.get("currency").asText() : currencyFor(sourceCode);
-            String offerId = sourceCode + ":" + editionId + ":"
-                + (platform != null ? platform : "UNKNOWN");
+                ? product.get("currency").asText() : null;
+            if (currency==null) price=null;
+            String legacyId = sourceCode + ":" + editionId + ":" + (platform != null ? platform : "UNKNOWN");
+            String offerId = legacyId + ":" + com.gtavi.news.OfficialPage.fingerprint(
+                (url==null?"":url)+"|"+(currency==null?"":currency)+"|"+product.path("market").asText(""));
+            persistence.deactivateOffer(legacyId);
             seenOfferIds.add(offerId);
 
             persistence.upsertOffer(offerId, editionId, sourceCode,
@@ -220,14 +247,6 @@ public class MonitoringOrchestrator {
         };
     }
 
-    private String currencyFor(String sourceCode) {
-        return switch (sourceCode) {
-            case "AMAZON_FR" -> "EUR";
-            case "ROCKSTAR_STORE" -> "USD";
-            default -> "CHF";
-        };
-    }
-
     private String matchEdition(String productName, List<String> editionIds) {
         String lower = productName.toLowerCase().replaceAll("[^a-z]", "");
         for (String id : editionIds) {
@@ -236,12 +255,6 @@ public class MonitoringOrchestrator {
             if (lowerId.contains("ultimate") && lower.contains("ultimate")) return id;
             if (lowerId.contains("collector") && lower.contains("collector")) return id;
             if (lowerId.contains("deluxe") && lower.contains("deluxe")) return id;
-        }
-        if (!lower.contains("ultimate") && !lower.contains("collector")
-            && !lower.contains("deluxe")) {
-            return editionIds.stream()
-                .filter(id -> id.toLowerCase().contains("standard"))
-                .findFirst().orElse(null);
         }
         return null;
     }

@@ -148,6 +148,10 @@ public class NotificationService {
     private Map<String, String> notificationData(ChangeEvent event) {
         Map<String, String> data = new LinkedHashMap<>();
         data.put("eventId", event.getId());
+        if ("ROCKSTAR_NEWS".equals(event.getSourceCode()) && event.getNewValue() != null
+            && event.getNewValue().matches("[a-f0-9]{24}"))
+            data.put("url", "/?news=" + event.getNewValue());
+        else data.put("url", "/#section-updates");
         if (event.getEventType() != null) data.put("eventType", event.getEventType());
         if (event.getPriority() != null) data.put("priority", event.getPriority());
         return data;
@@ -155,14 +159,14 @@ public class NotificationService {
 
     private String eventTypeToPreferenceField(String eventType) {
         return switch (eventType) {
-            case "COLLECTOR_EDITION_ANNOUNCED" -> "collectorEditionAnnouncement";
-            case "COLLECTOR_LISTING_DETECTED_AT_RETAILER",
+            case "COLLECTIBLE_ANNOUNCED", "COLLECTOR_EDITION_ANNOUNCED" -> "collectorEditionAnnouncement";
+            case "COLLECTIBLE_PREORDER_OPENED", "COLLECTOR_LISTING_DETECTED_AT_RETAILER",
                  "COLLECTOR_EDITION_PREORDER_OPENED" -> "collectorEditionPreorder";
             case "RELEASE_DATE_CHANGED" -> "releaseDateChanges";
             case "NEW_TRAILER" -> "newOfficialTrailers";
-            case "NEW_OFFICIAL_EDITION", "EDITION_REMOVED",
+            case "MUSIC_PREORDER_OPENED", "MUSIC_ANNOUNCED", "MAJOR_OFFICIAL_NEWS", "NEW_OFFICIAL_EDITION", "EDITION_REMOVED",
                  "PREORDER_OPENED", "PREORDER_CLOSED" -> "majorRockstarNews";
-            case "NEW_OFFICIAL_VIDEO" -> "generalNews";
+            case "OFFICIAL_NEWS", "NEW_OFFICIAL_VIDEO" -> "generalNews";
             case "BACK_IN_STOCK" -> "backInStock";
             case "OUT_OF_STOCK" -> "outOfStock";
             case "PRICE_CHANGED" -> "priceChanges";

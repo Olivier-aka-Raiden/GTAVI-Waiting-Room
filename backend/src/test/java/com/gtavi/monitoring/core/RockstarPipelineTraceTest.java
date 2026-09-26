@@ -105,14 +105,14 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
         assertEquals(Set.of("PS5", "XSX"), offers.stream()
             .map(RetailOffer::getPlatform).collect(Collectors.toSet()));
         for (var offer : offers) {
-            assertEquals(SOURCE + ":" + editionId + ":" + offer.getPlatform(), offer.getId());
+            assertTrue(offer.getId().startsWith(SOURCE + ":" + editionId + ":" + offer.getPlatform() + ":"));
             assertEquals(editionId, offer.getEditionId());
             assertEquals(SOURCE, offer.getRetailerCode());
             assertEquals("PREORDER_AVAILABLE", offer.getAvailabilityStatus());
             assertTrue(offer.isPreorderAvailable());
             assertEquals(URL, offer.getUrl());
             assertEquals("US", offer.getCountryCode());
-            assertEquals("USD", offer.getCurrency());
+            assertNull(offer.getCurrency(), "Currency must not be invented when the page provides none");
             assertNull(offer.getPrice());
         }
     }

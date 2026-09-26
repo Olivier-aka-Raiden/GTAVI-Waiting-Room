@@ -127,6 +127,8 @@ public class RedisDataInitializer {
     }
 
     private void seedSourceDefinitions() {
+        source("ROCKSTAR_NEWS", "Official news, music and collectibles", "https://www.rockstargames.com/VI/",
+            true, true, 300, 1);
         source("ROCKSTAR_MAIN", "Rockstar GTA VI Main Page", "https://www.rockstargames.com/VI/",
             true, true, 600, 1);
         source("ROCKSTAR_EDITIONS", "Rockstar GTA VI Editions", "https://www.rockstargames.com/VI/editions",

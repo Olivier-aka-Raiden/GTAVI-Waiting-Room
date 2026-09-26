@@ -66,7 +66,7 @@ public class HttpFetcher {
                 .header("DNT", "1")
                 .timeout(5000)
                 .followRedirects(true)
-                .ignoreContentType(true)
+                .ignoreContentType(true).ignoreHttpErrors(true)
                 .execute();
             Log.debugf("Warmed up session for %s (status=%d)", uri.getHost(), resp.statusCode());
             return resp.cookies();
@@ -92,7 +92,7 @@ public class HttpFetcher {
                     .timeout(timeoutMs)
                     .maxBodySize(MAX_RESPONSE_SIZE)
                     .followRedirects(true)
-                    .ignoreContentType(true)
+                    .ignoreContentType(true).ignoreHttpErrors(true)
                     .execute();
 
                 int statusCode = response.statusCode();
@@ -154,7 +154,7 @@ public class HttpFetcher {
     private long parseRetryAfter(String header) {
         if (header == null || header.isEmpty()) return 5000;
         try {
-            return Long.parseLong(header) * 1000;
+            return Math.clamp(Long.parseLong(header), 0, 30) * 1000;
         } catch (NumberFormatException e) {
             return 5000;
         }

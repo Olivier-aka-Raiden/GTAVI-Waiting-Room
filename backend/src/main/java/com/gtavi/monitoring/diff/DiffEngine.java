@@ -43,7 +43,7 @@ public class DiffEngine {
         }
 
         // Detect edition changes — only for Rockstar official sources
-        if (sourceCode.equals("ROCKSTAR_EDITIONS") || sourceCode.equals("ROCKSTAR_MAIN")) {
+        if (sourceCode.equals("ROCKSTAR_EDITIONS") || sourceCode.equals("ROCKSTAR_MAIN") || sourceCode.equals("ROCKSTAR_STORE")) {
             events.addAll(diffEditions(sourceCode, sourceUrl, previous, current));
         }
 
@@ -320,6 +320,8 @@ public class DiffEngine {
         BigDecimal previousPrice = decimal(previous.get("price"));
         BigDecimal currentPrice = decimal(current.get("price"));
         if (previousPrice != null && currentPrice != null
+            && !text(current, "currency", "").isBlank()
+            && text(current, "currency", "").equals(text(previous, "currency", ""))
             && previousPrice.compareTo(currentPrice) != 0) {
             String currency = text(current, "currency", "");
             events.add(createEvent(sourceCode, evidenceUrl,
@@ -348,21 +350,32 @@ public class DiffEngine {
 
     private boolean isCollectorEdition(String name, JsonNode editions) {
         String lower = name.toLowerCase().replaceAll("[^a-z]", "");
-        return lower.contains("collector") || lower.contains("collectors");
+        if (lower.contains("collector")) return true;
+        for (JsonNode edition:editions) if (name.equals(edition.path("name").asText())
+                && edition.path("type").asText().toUpperCase().contains("COLLECTOR")) return true;
+        return false;
     }
 
     private Map<String, JsonNode> productsByKey(JsonNode products) {
         Map<String, JsonNode> indexed = new LinkedHashMap<>();
         if (products == null || !products.isArray()) return indexed;
         for (JsonNode p : products) {
-            // Keep identity compatible with snapshots created before canonicalKey
-            // was introduced, avoiding a one-time burst of false "new" events.
+            // The same named product can have separate variant or regional offers.
+            // Use fields already present in older snapshots; canonicalKey is optional.
             String key = text(p, "edition", "UNKNOWN") + "|"
                 + text(p, "platform", "UNKNOWN") + "|"
-                + sanitizeKey(text(p, "name", "unknown"));
+                + sanitizeKey(text(p, "name", "unknown")) + "|"
+                + productUrlKey(p) + "|"
+                + text(p, "currency", "") + "|" + text(p, "market", "");
             indexed.put(key, p);
         }
         return indexed;
+    }
+
+    private String productUrlKey(JsonNode product) {
+        String url = text(product, "url", "");
+        String resolved = com.gtavi.news.OfficialPage.resolve(url, url);
+        return resolved == null ? url : com.gtavi.news.OfficialPage.canonical(resolved);
     }
 
     private boolean isUnavailable(String availability) {
@@ -447,7 +460,7 @@ public class DiffEngine {
         event.setDetectedAt(OffsetDateTime.now());
         event.setUserVisible(true);
         event.setNotificationEligible("CRITICAL".equals(priority) || "MAJOR".equals(priority)
-            || Set.of("PRICE_CHANGED", "OUT_OF_STOCK", "BACK_IN_STOCK").contains(eventType));
+            || Set.of("NEW_OFFICIAL_VIDEO", "PRICE_CHANGED", "OUT_OF_STOCK", "BACK_IN_STOCK").contains(eventType));
         event.setCreatedAt(OffsetDateTime.now());
         return event;
     }

@@ -5,7 +5,7 @@
       "type": "ULTIMATE",
       "description": "An exclusive collection of items threaded across all aspects of Jason and Lucia's story.",
       "features": ["Grand Theft Auto VI", "Vintage Vice City Pack (Pre-order Bonus)"],
-      "platforms": [],
+      "platforms": ["PS5", "XSX"],
       "preorderAvailable": true
     },
     {
@@ -13,7 +13,7 @@
       "type": "STANDARD",
       "description": "Get the standard edition of Grand Theft Auto VI along with pre-order bonuses.",
       "features": ["Grand Theft Auto VI", "Vintage Vice City Pack (Pre-order Bonus)"],
-      "platforms": [],
+      "platforms": ["PS5", "XSX"],
       "preorderAvailable": true
     }
   ],

@@ -16,7 +16,11 @@ import jakarta.inject.Inject;
 @ApplicationScoped
 public class AiExtractionService {
 
-    private static final int MAX_CHARS = 120_000; // bumped from 60K — Rockstar pages are ~62K after noise stripping; editions were cut off
+    private static final int MAX_CHARS = 24_000;
+
+    @Inject com.gtavi.news.NewsRepository checkpoints;
+    @org.eclipse.microprofile.config.inject.ConfigProperty(name="gtavi.monitoring.ai-calls-per-source",defaultValue="4")
+    int maxCalls;
 
     @Inject RockstarMainExtractor rockstarMain;
     @Inject RockstarEditionsExtractor rockstarEditions;
@@ -31,22 +35,40 @@ public class AiExtractionService {
      * Strips noise (scripts, styles) before sending to the LLM for maximum signal density.
      */
     public JsonNode extractFromHtml(String html, String sourceType) {
+        if (html == null || html.isBlank()) return null;
         String clean = prepareHtml(html);
-
+        String cacheKey = "typed-extraction:" + com.gtavi.news.OfficialPage.fingerprint("typed-v2|" + sourceType + "|" + clean);
+        JsonNode state = checkpoints.read(cacheKey);
+        if (state != null && state.path("complete").asBoolean()) return state.path("result");
+        var merged = state != null ? (com.fasterxml.jackson.databind.node.ObjectNode)state.path("result").deepCopy() : mapper.createObjectNode();
+        int offset = state == null ? 0 : state.path("offset").asInt();
+        int calls = 0;
         try {
-            return switch (sourceType) {
-                case "rockstar_main" -> mapper.convertValue(rockstarMain.extract(clean), JsonNode.class);
-                case "rockstar_editions" -> mapper.convertValue(rockstarEditions.extract(clean), JsonNode.class);
-                case "rockstar_media" -> mapper.convertValue(rockstarMedia.extract(clean), JsonNode.class);
-                case "retailer" -> mapper.convertValue(retailerProducts.extract(clean), JsonNode.class);
-                case "youtube_rss" -> mapper.convertValue(youtubeRss.extract(clean), JsonNode.class);
-                default -> {
-                    Log.warnf("Unknown source type: %s — no typed extractor available", sourceType);
-                    yield null;
-                }
-            };
+            while (offset < clean.length() && calls++ < Math.clamp(maxCalls,1,20)) {
+                int end = Math.min(clean.length(),offset + MAX_CHARS);
+                String chunk = clean.substring(offset,end);
+                JsonNode facts = switch (sourceType) {
+                    case "rockstar_main" -> mapper.valueToTree(rockstarMain.extract(chunk));
+                    case "rockstar_editions" -> mapper.valueToTree(rockstarEditions.extract(chunk));
+                    case "rockstar_media" -> mapper.valueToTree(rockstarMedia.extract(chunk));
+                    case "retailer" -> mapper.valueToTree(retailerProducts.extract(chunk));
+                    case "youtube_rss" -> mapper.valueToTree(youtubeRss.extract(chunk));
+                    default -> throw new IllegalArgumentException("Unknown extraction type: " + sourceType);
+                };
+                ExtractionMerge.into(merged,facts);
+                offset = end == clean.length() ? end : end - 500;
+                var progress=mapper.createObjectNode().put("offset",offset).put("complete",offset>=clean.length());
+                progress.set("result",merged);
+                checkpoints.cache(cacheKey,progress);
+            }
+            return offset>=clean.length() ? merged : null;
+        } catch (ExtractionMerge.ConflictingFactsException e) {
+            // Re-evaluate the whole observation: an earlier cached chunk may be the incorrect one.
+            checkpoints.delete(cacheKey);
+            Log.warnf("Conflicting facts for %s; restarting extraction on the next check", sourceType);
+            return null;
         } catch (Exception e) {
-            Log.errorf(e, "AI extraction failed for %s", sourceType);
+            Log.warnf(e,"Typed extraction incomplete for %s; preserving previous app records",sourceType);
             return null;
         }
     }
@@ -55,19 +77,22 @@ public class AiExtractionService {
      * Extract retailer products as a typed DTO (for MonitoringOrchestrator.persistOffers).
      */
     public RetailerProductsData extractRetailerProducts(String html) {
-        return retailerProducts.extract(prepareHtml(html));
+        JsonNode result=extractFromHtml(html,"retailer");
+        return result==null ? null : mapper.convertValue(result,RetailerProductsData.class);
     }
 
     // ── HTML preparation ─────────────────────────────────────────────────
 
     /**
-     * Strip noise (scripts, styles, comments, excessive whitespace) then truncate
-     * if still over MAX_CHARS. Retailer pages are 150K+ chars of JS/CSS bloat;
-     * stripping lets the actual product content survive truncation.
+     * Strip layout noise while retaining structured evidence. Chunking resumes across runs
+     * for large retailer pages;
+     * no middle segment is discarded.
      */
     private String prepareHtml(String html) {
-        String stripped = stripNoise(html);
-        return truncate(stripped, MAX_CHARS);
+        StringBuilder prepared=new StringBuilder(stripNoise(html));
+        var document=org.jsoup.Jsoup.parse(html);
+        for(var script:document.select("script[type=application/ld+json]")) prepared.append("\nStructured evidence:\n").append(script.data());
+        return prepared.toString();
     }
 
     /**
@@ -104,12 +129,4 @@ public class AiExtractionService {
         return cleaned;
     }
 
-    private String truncate(String html, int maxChars) {
-        if (html.length() <= maxChars) return html;
-        // Keeps 80% from start, 20% from end (was 60/30 — product content is usually in first 80%)
-        int head = (int) (maxChars * 0.8);
-        int tail = (int) (maxChars * 0.2);
-        return html.substring(0, head) + "\n<!-- SNIP -->\n" +
-               html.substring(html.length() - tail);
-    }
 }

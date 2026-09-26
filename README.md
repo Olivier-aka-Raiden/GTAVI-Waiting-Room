@@ -267,3 +267,19 @@ When a retailer monitor detects GTA VI products (via AI extraction), they appear
 ## License
 
 MIT — see [LICENSE](./LICENSE)
+
+## Official news, collectibles, and music
+
+The ROCKSTAR_NEWS monitor discovers linked official announcements and products, retains retries in Redis, and combines typed AI extraction with metadata/JSON-LD fallbacks. The app has dedicated Collectibles, Music, and Official news sections.
+
+Read endpoints under /api/v1/games/gta-vi/news: the root is paginated news, /{id} is article detail, /products is paginated products, and /status is the last crawl summary. Notifications open /?news={id}.
+
+Discovery checks the verified public Newswire API, its GTA VI archive cursor, and linked official pages. Article bodies are hydrated from the public API. Both new and older AI extractors resume overlapping chunks; verified JSON-LD products and music links remain available during AI outages. Explicit shared links merge related pages; later preorder, stock, price and material news changes create separate events.
+
+Budgets: gtavi.news.pages-per-run (12), gtavi.news.ai-calls-per-run (10), gtavi.news.ai-characters-per-run (100000), and gtavi.monitoring.ai-calls-per-source (4). Also configurable: gtavi.news.enabled, gtavi.news.newswire-tag (666), gtavi.news.alert-lookback-days (14), and gtavi.news.seed-urls. Existing scheduling and dependencies are reused.
+
+The status endpoint reports persistent pending/failed page counts and AI usage. Incomplete work degrades monitoring health and automatically retries; these diagnostics add no user alert stream. Cards retain separate variant/currency/market offers and verified values during partial extraction.
+
+Run the frontend regression suite with `node --test frontend/scripts/news.test.mjs`; build with `npm --prefix frontend run build`. Run backend tests through the project's Quarkus Dev MCP workflow described in backend/AGENTS.md.
+
+See [implementation report, verification, and rollout](docs/2026-09-26-news-reliability-implementation.md), including coordinated frontend/backend rollout requirements. Relevant Quarkus guides: [REST](https://quarkus.io/guides/rest) and [Redis](https://quarkus.io/guides/redis-reference).

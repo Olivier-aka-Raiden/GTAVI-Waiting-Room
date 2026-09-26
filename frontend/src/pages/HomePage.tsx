@@ -1,3 +1,5 @@
+import { NewsSection } from '../features/news/NewsSection';
+import { onForegroundMessage } from '../firebase/messaging';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getGameOverview } from '../api/game';
 import { registerDevice, getPreferences, updatePreferences } from '../api/devices';
@@ -208,6 +210,9 @@ const TABS = [
   { id: 'countdown', label: 'Countdown', emoji: '⌛' },
   { id: 'trailers', label: 'Trailers', emoji: '🎬' },
   { id: 'editions', label: 'Editions', emoji: '📦' },
+  { id: 'collectibles', label: 'Collectibles', emoji: '📦' },
+  { id: 'music', label: 'Music', emoji: '🎵' },
+  { id: 'news', label: 'News', emoji: '📰' },
   { id: 'updates', label: 'Updates', emoji: '📰' },
   { id: 'alerts', label: 'Alerts', emoji: '🔔' },
 ] as const;
@@ -301,6 +306,7 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
 export function HomePage() {
   const [data, setData] = useState<GameOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [liveAlert, setLiveAlert] = useState<{title: string; url: string} | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('countdown');
   const [notificationActive, setNotificationActive] = useState(
@@ -405,6 +411,18 @@ export function HomePage() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    if (!notificationActive) return;
+    try {
+      return onForegroundMessage((payload) => {
+        const url = payload.data?.url;
+        setLiveAlert({ title: payload.data?.title ?? payload.notification?.title ?? "New GTA VI update",
+          url: typeof url === "string" && /^\/\?news=[a-f0-9]{24}$/.test(url) ? url : "/#section-updates" });
+        window.dispatchEvent(new Event("gtavi-news-update"));
+        getGameOverview().then(setData).catch(() => {});
+      });
+    } catch { return; }
+  }, [notificationActive]);
 
   // ── Update active tab based on scroll position ──────────────────────────
   useEffect(() => {
@@ -444,6 +462,10 @@ export function HomePage() {
         style={{ backgroundImage: 'url(/assets/hero-poster.webp)', maskImage: 'linear-gradient(to bottom, black 40%, transparent)' }}
       />
 
+      {liveAlert && <aside role="status" className="fixed bottom-4 left-4 right-4 z-50 glass-card p-4 flex justify-between gap-4">
+        <a className="text-accent-pink underline min-h-11 flex items-center" href={liveAlert.url}>{liveAlert.title}</a>
+        <button className="min-h-11" onClick={() => setLiveAlert(null)} aria-label="Dismiss notification">Dismiss</button>
+      </aside>}
       <StickyBar
         notificationActive={notificationActive}
         activeTab={activeTab}
@@ -473,6 +495,8 @@ export function HomePage() {
           </div>
           <Divider />
 
+          <NewsSection />
+          <Divider />
           {/* Events */}
           <div id="section-updates">
             <Section>

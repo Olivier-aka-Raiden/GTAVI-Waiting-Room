@@ -223,6 +223,18 @@ public class RedisPersistence {
         return read(entityKey("game", code), Game.class);
     }
 
+    public void saveGame(Game game) { values.set(entityKey("game",game.getCode()),toJson(game)); }
+
+    public void saveEdition(Edition edition) {
+        values.set(entityKey("edition",edition.getId()),toJson(edition));
+        sets.sadd(indexKey("editions","game",edition.getGameCode()),edition.getId());
+    }
+
+    public void saveTrailer(Trailer trailer) {
+        values.set(entityKey("trailer",trailer.getId()),toJson(trailer));
+        sortedSets.zadd(indexKey("trailers","game",trailer.getGameCode()),epoch(trailer.getPublicationDate()),trailer.getId());
+    }
+
     public void saveGameIfAbsent(Game game) {
         writeIfAbsent(entityKey("game", game.getCode()), game);
     }
@@ -433,6 +445,8 @@ public class RedisPersistence {
         sets.sadd(indexKey("sources"), code);
     }
 
+    public JsonNode getSourceDefinition(String code) { return readNode(entityKey("source",code)); }
+
     public MonitoringHealthData getMonitoringHealth() {
         int monitoredSources = 0;
         int healthySources = 0;
@@ -450,7 +464,7 @@ public class RedisPersistence {
             OffsetDateTime checkedAt = parseDate(latest, "checkedAt");
             lastRunAt = later(lastRunAt, checkedAt);
             oldestRunAt = earlier(oldestRunAt, checkedAt);
-            if (latest.path("successful").asBoolean(false)) {
+            if (latest.path("successful").asBoolean(false) && !latest.path("normalizedJson").path("degraded").asBoolean(false)) {
                 healthySources++;
                 lastSuccessfulAt = later(lastSuccessfulAt, checkedAt);
             }

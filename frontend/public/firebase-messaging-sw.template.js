@@ -1,11 +1,17 @@
-// Firebase Cloud Messaging service worker.
-// Must live at /firebase-messaging-sw.js (root of the domain).
-// Firebase SDK self-imports via importScripts — no bundler needed here.
-// Placeholders (VITE_*_PLACEHOLDER) are replaced at build time by scripts/inject-firebase-sw.js.
-
+// Notification clicks must be registered before Firebase's own handlers.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const value = event.notification.data?.url ?? '/#section-updates';
+  const target = new URL(value, self.location.origin);
+  if (target.origin !== self.location.origin) return;
+  event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async windows => {
+    const existing = windows.find(client => new URL(client.url).origin === self.location.origin);
+    if (existing) { await existing.navigate(target.href); return existing.focus(); }
+    return clients.openWindow(target.href);
+  }));
+});
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
-
 firebase.initializeApp({
   apiKey: 'VITE_FIREBASE_API_KEY_PLACEHOLDER',
   authDomain: 'VITE_FIREBASE_AUTH_DOMAIN_PLACEHOLDER',
@@ -14,39 +20,17 @@ firebase.initializeApp({
   messagingSenderId: 'VITE_FIREBASE_MESSAGING_SENDER_ID_PLACEHOLDER',
   appId: 'VITE_FIREBASE_APP_ID_PLACEHOLDER',
 });
-
 const messaging = firebase.messaging();
-
-// Background message handler — fires when the app is NOT in the foreground.
 messaging.onBackgroundMessage((payload) => {
-  console.log('[FCM SW] Background message received:', payload);
-  const { title, body } = payload.notification ?? {};
-  const icon = '/assets/icon-192.png';
-
-  self.registration.showNotification(title ?? 'GTA VI Update', {
-    body: body ?? '',
-    icon,
-    badge: icon,
-    data: payload.data ?? {},
-    vibrate: [200, 100, 200],
-    tag: 'gtavi-update',
+  // Older server payloads are already displayed automatically by Firebase.
+  if (payload.notification) return;
+  const data = payload.data ?? {};
+  return self.registration.showNotification(data.title ?? 'GTA VI Update', {
+    body: data.body ?? '',
+    icon: '/assets/icon-192.png',
+    badge: '/assets/icon-192.png',
+    data,
+    tag: data.eventId ?? 'gtavi-update',
     requireInteraction: false,
   });
-});
-
-// Handle notification click — open the app
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url && 'focus' in client) {
-          return client.focus();
-        }
-      }
-      if (clients.openWindow) {
-        return clients.openWindow('/');
-      }
-    })
-  );
 });
