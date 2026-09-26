@@ -51,7 +51,7 @@ public class MonitoringOrchestrator {
 
     public MonitoringRunSummary runCheck(Set<String> sourceCodes) {
         OffsetDateTime startedAt = OffsetDateTime.now();
-        int checked = 0, successful = 0, failed = 0, eventsCreated = 0;
+        int checked = 0, successful = 0, failed = 0, pending = 0, eventsCreated = 0;
         drainNotificationOutbox("before monitoring");
 
         List<GameSourceMonitor> monitors = getDueMonitors(sourceCodes);
@@ -111,10 +111,19 @@ public class MonitoringOrchestrator {
                     persistence.saveSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
                         currentData, hash, true, null);
                     processing.delete("observation:"+monitor.sourceCode());
+                    processing.delete("extraction-pending:"+monitor.sourceCode());
                     successful++;
                     Log.infof("Monitor %s: SUCCESS (hash=%s, %d events)",
                         monitor.sourceCode(), hash != null ? hash.substring(0, 8) : "null",
                         createdForSource);
+                } else if (result.status() == MonitorStatus.EXTRACTION_PENDING) {
+                    var progress = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()
+                        .put("processingStatus", "EXTRACTION_PENDING").put("degraded", true)
+                        .put("reason", result.errorMessage());
+                    processing.write("extraction-pending:"+monitor.sourceCode(), progress);
+                    persistence.saveSnapshot(monitor.sourceCode(), monitor.sourceUrl(), progress, null, false, result.errorMessage());
+                    pending++;
+                    Log.infof("Monitor %s: EXTRACTION_PENDING — %s", monitor.sourceCode(), result.errorMessage());
                 } else {
                     persistence.saveSnapshot(monitor.sourceCode(), monitor.sourceUrl(),
                         null, null, false,
@@ -136,7 +145,7 @@ public class MonitoringOrchestrator {
         drainNotificationOutbox("after monitoring");
 
         return new MonitoringRunSummary(startedAt, OffsetDateTime.now(),
-            checked, successful, failed, eventsCreated);
+            checked, successful, failed, eventsCreated, pending);
     }
 
     private void drainNotificationOutbox(String phase) {
@@ -170,8 +179,10 @@ public class MonitoringOrchestrator {
     private boolean isDue(GameSourceMonitor monitor) {
         try {
             OffsetDateTime lastCheck = persistence.getLatestSnapshotTime(monitor.sourceCode());
+            int interval = processing.read("extraction-pending:"+monitor.sourceCode()) == null
+                ? monitor.checkIntervalSeconds() : Math.min(300, monitor.checkIntervalSeconds());
             return lastCheck == null
-                || lastCheck.isBefore(OffsetDateTime.now().minusSeconds(monitor.checkIntervalSeconds()));
+                || lastCheck.isBefore(OffsetDateTime.now().minusSeconds(interval));
         } catch (Exception e) {
             Log.warnf("Could not evaluate schedule for %s; running it: %s",
                 monitor.sourceCode(), e.getMessage());
@@ -265,6 +276,7 @@ public class MonitoringOrchestrator {
         int checkedSources,
         int successfulSources,
         int failedSources,
-        int eventsCreated
+        int eventsCreated,
+        int pendingSources
     ) {}
 }

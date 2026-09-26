@@ -1017,7 +1017,8 @@ public class RedisPersistence {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException e) {
-            throw new IllegalStateException("Could not serialize Redis record", e);
+            throw new IllegalStateException("Could not serialize Redis record of type "
+                + (value == null ? "null" : value.getClass().getName()), e);
         }
     }
 

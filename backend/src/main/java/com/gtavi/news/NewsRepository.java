@@ -30,24 +30,66 @@ public class NewsRepository {
         redis.value(String.class).set(key(suffix), value.toString(), new SetArgs().ex(2592000));
     }
     public void discover(String url) {
-        if (!OfficialPage.allowed(url)) return;
+        if (!OfficialUrlPolicy.crawlable(url)) return;
         String id = OfficialPage.identity(url);
+        if (redis.value(String.class).get(key("ignored:" + id)) != null) return;
         redis.value(String.class).setnx(key("url:" + id), url);
         redis.sortedSet(String.class).zadd(key("queue"), new io.quarkus.redis.datasource.sortedset.ZAddArgs().nx(),
             url.contains("/newswire/article/") ? -3 : url.contains("/VI/") ? -2.5 : url.contains("/merchandise/") || url.contains("/products/") ? -2 : -1, id);
     }
     public List<String> due(int limit) {
-        var ids = redis.sortedSet(String.class).zrange(key("queue"), 0, Math.max(0,limit - 1));
+        if (limit <= 0) return List.of();
+        var ids = redis.sortedSet(String.class).zrange(key("queue"), 0, Math.max(99,limit - 1));
         var urls = new ArrayList<String>();
         for (String id : ids) {
             var score = redis.sortedSet(String.class).zscore(key("queue"), id);
-            if (score.isPresent() && score.getAsDouble() <= System.currentTimeMillis()) {
+            if (score.isPresent() && score.getAsDouble() > System.currentTimeMillis()) break;
+            if (score.isPresent()) {
                 String url = redis.value(String.class).get(key("url:" + id));
-                if (url != null) urls.add(url);
+                if (url != null && !OfficialUrlPolicy.crawlable(url) && read("pending:" + id) == null) {
+                    ignore(url, "Asset or localized site route; excluded from page monitoring");
+                } else if (url != null) urls.add(url);
+                if (urls.size() >= limit) break;
             }
         }
         return urls;
     }
+
+    /** Retire polluted entries; queued replay plans must finish before their URLs are retired. */
+    public int pruneInvalidPages() {
+        JsonNode progress = read("queue-cleanup");
+        long offset = progress == null ? 0 : progress.path("offset").asLong();
+        var ids = redis.sortedSet(String.class).zrange(key("queue"), offset, offset + 99);
+        if (ids.isEmpty()) {
+            write("queue-cleanup", json.createObjectNode().put("offset", 0));
+            return 0;
+        }
+        String[] keys = ids.stream().map(id -> key("url:" + id)).toArray(String[]::new);
+        var urls = redis.execute("MGET", keys);
+        int removed = 0;
+        for (int i = 0; i < ids.size(); i++) {
+            String url = urls.get(i) == null ? null : urls.get(i).toString();
+            if (url == null) {
+                redis.sortedSet(String.class).zrem(key("queue"), ids.get(i));
+                removed++;
+            } else if (!OfficialUrlPolicy.crawlable(url) && read("pending:" + ids.get(i)) == null) {
+                ignore(url, "Asset or localized site route; excluded from page monitoring");
+                removed++;
+            }
+        }
+        long next = offset + ids.size() - removed;
+        write("queue-cleanup", json.createObjectNode().put("offset", next >= queuedCount() ? 0 : next));
+        return removed;
+    }
+
+    public void ignore(String url, String reason) {
+        String id = OfficialPage.identity(url);
+        recordCheck(id, "SKIPPED", reason, 86400);
+        redis.sortedSet(String.class).zrem(key("queue"), id);
+        // An extensionless resource can change into a real page later; discovery may reconsider it tomorrow.
+        redis.value(String.class).set(key("ignored:" + id), reason, new SetArgs().ex(86400));
+    }
+
     public void reschedule(String url, int seconds) {
         redis.sortedSet(String.class).zadd(key("queue"), System.currentTimeMillis() + seconds * 1000L, OfficialPage.identity(url));
     }

@@ -31,10 +31,7 @@ public class YoutubeRockstarMonitor implements GameSourceMonitor {
     public MonitorResult fetchCurrentState() {
         try {
             String xml = fetcher.fetch(URL);
-            var data = aiExtraction.extractFromHtml(xml, "youtube_rss");
-            if (data == null) return MonitorResult.failure(CODE, URL,
-                MonitorStatus.PARSER_FAILURE, "AI extraction null");
-            return MonitorResult.success(CODE, URL, data, null);
+            return aiExtraction.extractFromHtml(xml, "youtube_rss").toMonitorResult(CODE, URL);
         } catch (Exception e) {
             Log.errorf("YouTube RSS monitor failed: %s", e.getMessage());
             return MonitorResult.failure(CODE, URL,

@@ -48,6 +48,8 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         Retailer.class,
         RetailOffer.class,
         ChangeEvent.class,
+        com.gtavi.domain.NotificationDelivery.class,
+        com.gtavi.domain.NotificationDeliveryStatus.class,
 
         // ── Core classes ──
         RetailerProductsData.class,
@@ -57,6 +59,11 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         RockstarMainData.class,
         RockstarMediaData.class,
         RockstarMediaData.VideoItem.class,
+
+        // Announcement AI output, including every nested record.
+        com.gtavi.news.AnnouncementExtraction.class,
+        com.gtavi.news.AnnouncementExtraction.Product.class,
+        com.gtavi.news.AnnouncementExtraction.Fact.class,
 
         // ── Service records ──
         GameService.MonitoringHealth.class,

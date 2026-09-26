@@ -39,12 +39,7 @@ public class RockstarMediaMonitor implements GameSourceMonitor {
     public MonitorResult fetchCurrentState() {
         try {
             String html = fetcher.fetch(URL);
-            var data = aiExtraction.extractFromHtml(html, "rockstar_media");
-            if (data == null) {
-                return MonitorResult.failure(CODE, URL, MonitorStatus.PARSER_FAILURE,
-                    "AI extraction returned null");
-            }
-            return MonitorResult.success(CODE, URL, data, null);
+            return aiExtraction.extractFromHtml(html, "rockstar_media").toMonitorResult(CODE, URL);
         } catch (Exception e) {
             Log.errorf("RockstarMediaMonitor failed: %s", e.getMessage());
             return MonitorResult.failure(CODE, URL, MonitorStatus.TEMPORARY_FAILURE,

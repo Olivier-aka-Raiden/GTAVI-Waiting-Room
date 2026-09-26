@@ -56,15 +56,16 @@ public class MonitoringResource {
                 ? orchestrator.runCheck(java.util.Set.of(source))
                 : orchestrator.runCheck();
 
-            Log.infof("Monitoring run complete: %d checked, %d success, %d failed, %d events",
+            Log.infof("Monitoring run complete: %d checked, %d success, %d failed, %d pending, %d events",
                 summary.checkedSources(), summary.successfulSources(),
-                summary.failedSources(), summary.eventsCreated());
+                summary.failedSources(), summary.pendingSources(), summary.eventsCreated());
 
             return Response.ok(Map.of(
                 "status", "completed",
                 "checkedSources", summary.checkedSources(),
                 "successfulSources", summary.successfulSources(),
                 "failedSources", summary.failedSources(),
+                "pendingSources", summary.pendingSources(),
                 "eventsCreated", summary.eventsCreated(),
                 "startedAt", summary.startedAt().toString(),
                 "finishedAt", summary.finishedAt().toString()

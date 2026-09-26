@@ -283,3 +283,16 @@ The status endpoint reports persistent pending/failed page counts and AI usage. 
 Run the frontend regression suite with `node --test frontend/scripts/news.test.mjs`; build with `npm --prefix frontend run build`. Run backend tests through the project's Quarkus Dev MCP workflow described in backend/AGENTS.md.
 
 See [implementation report, verification, and rollout](docs/2026-09-26-news-reliability-implementation.md), including coordinated frontend/backend rollout requirements. Relevant Quarkus guides: [REST](https://quarkus.io/guides/rest) and [Redis](https://quarkus.io/guides/redis-reference).
+
+
+### Extraction progress and recovery
+
+AI extraction requests are stateless. Prepared input retains text, purchase/image evidence and embedded data while removing decorative markup. Budget exhaustion is reported as EXTRACTION_PENDING, with pendingSources in the authenticated monitoring response; it does not count as a parser failure or replace successful app data. Pending sources resume automatically. Existing gtavi.monitoring.ai-calls-per-source defaults to four. No migration or new environment variables are required.
+
+See the [extraction reliability correction](docs/2026-09-26-extraction-reliability-fix.md) for the incident, behavior and regression coverage.
+
+### Native JSON and crawl safety
+
+Application JSON types and nested announcement records are registered centrally in QuarkusFixNativeBuild. Regression checks cover nested DTO registration and notification JSON round trips. Asset URLs remain card evidence but are excluded from page crawling; existing invalid queue entries are retired automatically in bounded batches. The news status includes skipped/skippedPages diagnostics without additional user notifications.
+
+See the [crawler and native-readiness audit](docs/2026-09-26-crawler-native-readiness.md), including the native executable verification limitation and rollout guidance.

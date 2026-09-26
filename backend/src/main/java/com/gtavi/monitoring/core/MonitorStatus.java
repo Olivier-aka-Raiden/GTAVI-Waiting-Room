@@ -5,6 +5,7 @@ package com.gtavi.monitoring.core;
  */
 public enum MonitorStatus {
     SUCCESS,
+    EXTRACTION_PENDING,
     NO_RELEVANT_DATA,
     TEMPORARY_FAILURE,
     PARSER_FAILURE,

@@ -48,12 +48,12 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
         }, HttpFetcher.class);
         QuarkusMock.installMockForType(new AiExtractionService() {
             @Override
-            public JsonNode extractFromHtml(String content, String sourceType) {
+            public ExtractionResult extractFromHtml(String content, String sourceType) {
                 extractionCalls++;
                 assertEquals("rockstar_editions", sourceType);
                 assertTrue(content.contains("Ultimate Edition"));
                 assertFalse(content.contains("<script"), "The real monitor must extract the SPA content");
-                return editions.deepCopy();
+                return ExtractionResult.complete(editions.deepCopy(), content.length());
             }
         }, AiExtractionService.class);
     }

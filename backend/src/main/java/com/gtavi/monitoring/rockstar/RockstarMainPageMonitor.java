@@ -39,12 +39,7 @@ public class RockstarMainPageMonitor implements GameSourceMonitor {
     public MonitorResult fetchCurrentState() {
         try {
             String html = fetcher.fetch(URL);
-            var data = aiExtraction.extractFromHtml(html, "rockstar_main");
-            if (data == null) {
-                return MonitorResult.failure(CODE, URL, MonitorStatus.PARSER_FAILURE,
-                    "AI extraction returned null");
-            }
-            return MonitorResult.success(CODE, URL, data, null);
+            return aiExtraction.extractFromHtml(html, "rockstar_main").toMonitorResult(CODE, URL);
         } catch (Exception e) {
             Log.errorf("RockstarMainPageMonitor failed: %s", e.getMessage());
             return MonitorResult.failure(CODE, URL, MonitorStatus.TEMPORARY_FAILURE,

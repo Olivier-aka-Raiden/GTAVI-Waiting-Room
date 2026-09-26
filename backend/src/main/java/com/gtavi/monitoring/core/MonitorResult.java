@@ -31,6 +31,11 @@ public record MonitorResult(
             MonitorStatus.SUCCESS, data, hash, null);
     }
 
+    public static MonitorResult pending(String sourceCode, String sourceUrl, String progress) {
+        return new MonitorResult(sourceCode, sourceUrl, Instant.now(),
+            MonitorStatus.EXTRACTION_PENDING, null, null, progress);
+    }
+
     public static MonitorResult failure(String sourceCode, String sourceUrl,
                                          MonitorStatus status, String error) {
         return new MonitorResult(sourceCode, sourceUrl, Instant.now(),

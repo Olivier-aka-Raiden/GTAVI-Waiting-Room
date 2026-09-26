@@ -30,6 +30,30 @@ class ExtractorQuteSanityTest {
     @Inject YoutubeRssExtractor youtubeRss;
     @Inject RetailerProductsExtractor retailerProducts;
 
+
+    @Inject com.gtavi.news.AnnouncementExtractor announcements;
+
+    @Test void independentExtractionCallsNeverCarryPriorMessages() {
+        model.response = "{}";
+        java.util.List<java.util.function.Consumer<String>> extractors = java.util.List.of(
+            text -> rockstarMain.extract(text),
+            text -> rockstarEditions.extract(text),
+            text -> rockstarMedia.extract(text),
+            text -> retailerProducts.extract(text),
+            text -> youtubeRss.extract(text),
+            text -> announcements.extract("https://www.rockstargames.com/VI/", "GTA VI", text)
+        );
+        for (var extractor : extractors) {
+            extractor.accept("UNIQUE_OLD_OBSERVATION");
+            extractor.accept("UNIQUE_CURRENT_OBSERVATION");
+            assertEquals(1, model.request.messages().stream().filter(UserMessage.class::isInstance).count());
+            assertEquals(0, model.request.messages().stream().filter(AiMessage.class::isInstance).count());
+            String request = model.request.messages().toString();
+            assertTrue(request.contains("UNIQUE_CURRENT_OBSERVATION"));
+            assertFalse(request.contains("UNIQUE_OLD_OBSERVATION"));
+        }
+    }
+
     private CapturingChatModel model;
 
     @BeforeEach

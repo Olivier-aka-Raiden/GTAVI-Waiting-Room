@@ -133,7 +133,8 @@ public record OfficialPage(String url, String title, String description, String 
     private static void collectPurchaseLinks(com.fasterxml.jackson.databind.JsonNode node,
             com.fasterxml.jackson.databind.node.ArrayNode links, String base) {
         if (node.isObject() && node.hasNonNull("href")) {
-            String label = node.path("children").asText(node.path("analytics").path("text").asText(""));
+            String label = node.path("children").asText("");
+            if (label.isBlank()) label = node.path("analytics").path("text").asText("");
             String target = resolve(base, node.path("href").asText());
             if (target != null && label.toLowerCase(Locale.ROOT).matches("(?s).*(shop now|pre.?order|buy|vinyl|soundtrack|compact disc).*"))
                 links.addObject().put("name", label).put("url", target);

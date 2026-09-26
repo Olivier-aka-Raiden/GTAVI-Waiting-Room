@@ -24,9 +24,7 @@ public class XboxStoreMonitor implements GameSourceMonitor {
     public MonitorResult fetchCurrentState() {
         try {
             String html = fetcher.fetch(URL);
-            var data = aiExtraction.extractFromHtml(html, "retailer");
-            if (data == null) return MonitorResult.failure(CODE, URL, MonitorStatus.PARSER_FAILURE, "AI extraction null");
-            return MonitorResult.success(CODE, URL, data, null);
+            return aiExtraction.extractFromHtml(html, "retailer").toMonitorResult(CODE, URL);
         } catch (Exception e) {
             Log.errorf("Xbox Store monitor failed: %s", e.getMessage());
             return MonitorResult.failure(CODE, URL, MonitorStatus.TEMPORARY_FAILURE, e.getMessage());

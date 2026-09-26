@@ -34,9 +34,11 @@ public class RockstarStoreMonitor implements GameSourceMonitor {
             // Extract visible content from Next.js SPA — raw HTML is just script tags
             String content = SpaContentExtractor.extractContent(html);
             // Use editions extractor — this page is an edition comparison, not a retailer listing
-            var editionsData = aiExtraction.extractFromHtml(content, "rockstar_editions");
+            var extraction = aiExtraction.extractFromHtml(content, "rockstar_editions");
+            if (extraction.state() != ExtractionResult.State.COMPLETE) return extraction.toMonitorResult(CODE, URL);
+            var editionsData = extraction.data();
             if (editionsData == null || !editionsData.has("editions")) {
-                return MonitorResult.failure(CODE, URL, MonitorStatus.PARSER_FAILURE, "AI extraction null");
+                return MonitorResult.failure(CODE, URL, MonitorStatus.PARSER_FAILURE, "Extraction did not contain an editions array");
             }
             // Convert editions to product format for the retailer pipeline
             var data = editionsToProducts(editionsData);

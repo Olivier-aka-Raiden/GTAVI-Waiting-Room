@@ -34,9 +34,10 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
         if(!enabled) return MonitorResult.success(sourceCode(),sourceUrl(),json.createObjectNode().put("disabled",true),null);
         String lease=repository.acquire(sourceCode());
         if(lease==null) return MonitorResult.failure(sourceCode(),sourceUrl(),MonitorStatus.TEMPORARY_FAILURE,"News monitor already running");
-        int processed=0, failures=0, incomplete=0;
+        int processed=0, failures=0, incomplete=0, skipped=0;
         var budget=new ExtractionBudget(Math.clamp(callLimit,0,50),Math.clamp(characterLimit,0,1000000));
         try {
+            skipped += repository.pruneInvalidPages();
             seeds.forEach(repository::discover);
             try {
                 discovery.discover();
@@ -77,6 +78,10 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
                     repository.reschedule(url,retry);
                     if(pending) incomplete++;
                     processed++;
+                } catch(OfficialPageFetcher.NonPageResourceException e) {
+                    repository.ignore(url, e.getMessage());
+                    skipped++;
+                    Log.debugf("Ignoring non-page source %s: %s", url, e.getMessage());
                 } catch(Exception e) {
                     failures++;
                     JsonNode old=repository.read("checks:"+id);
@@ -88,7 +93,7 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
                 }
             }
             var status=json.createObjectNode().put("processed",processed).put("failed",failures)
-                .put("enrichmentPending",incomplete)
+                .put("enrichmentPending",incomplete).put("skipped",skipped).put("skippedPages",repository.stateCount("SKIPPED"))
                 .put("pendingPages",repository.stateCount("PENDING")).put("failedPages",repository.stateCount("FAILED"))
                 .put("degraded",repository.stateCount("FAILED")+repository.stateCount("PENDING")>0)
                 .put("trackedPages",repository.queuedCount()).put("aiCalls",budget.usedCalls())
@@ -121,14 +126,10 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
     }
 
     static boolean discoverable(String url) {
-        if(!OfficialPage.allowed(url)) return false;
-        String path=java.net.URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT);
-        return path.startsWith("/newswire/article/") || path.startsWith("/vi/")
-            || path.startsWith("/merchandise/") || path.startsWith("/products/");
+        return OfficialUrlPolicy.discoverable(url);
     }
+
     static boolean publishable(String url) {
-        String path=java.net.URI.create(url).getPath().toLowerCase(java.util.Locale.ROOT).replaceAll("/+$","");
-        return path.startsWith("/newswire/article/") || path.startsWith("/merchandise/")
-            || path.startsWith("/products/") || path.startsWith("/vi/") && !path.contains("/characters") && !path.contains("/locations");
+        return OfficialUrlPolicy.publishable(url);
     }
 }
