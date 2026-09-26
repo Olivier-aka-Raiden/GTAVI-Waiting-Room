@@ -28,7 +28,7 @@ messaging.onBackgroundMessage((payload) => {
   return self.registration.showNotification(data.title ?? 'GTA VI Update', {
     body: data.body ?? '',
     icon: '/assets/icon-192.png',
-    badge: '/assets/icon-192.png',
+    badge: '/assets/notification-badge-96.png',
     data,
     tag: data.eventId ?? 'gtavi-update',
     requireInteraction: false,

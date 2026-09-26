@@ -57,6 +57,8 @@ test('background messages display once and different events retain different tag
   state.background({ data: { title: 'Album', eventId: 'a' } });
   state.background({ data: { title: 'Collector', eventId: 'b' } });
   assert.equal(state.shown.length, 2);
+  assert.equal(state.shown[0].options.icon, '/assets/icon-192.png');
+  assert.equal(state.shown[0].options.badge, '/assets/notification-badge-96.png');
   assert.notEqual(state.shown[0].options.tag, state.shown[1].options.tag);
 });
 test('notification click opens the selected article and blocks external redirects', async () => {

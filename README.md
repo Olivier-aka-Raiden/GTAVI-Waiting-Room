@@ -300,3 +300,7 @@ See the [crawler and native-readiness audit](docs/2026-09-26-crawler-native-read
 ### Product and offer identity
 
 Retailer URLs use stable identities so encoded URL variants cannot create duplicate offers. Missing prices preserve the last observed value in the same currency. The Album has one card with separate format choices; genuine retailer variants remain available in expandable groups. Existing records are reconciled automatically in public responses, with original source evidence retained. See the [duplicate-offer incident and rollout](docs/2026-09-26-duplicate-offers-fix.md).
+
+### Android notification icon
+
+The service worker uses assets/notification-badge-96.png for the small Android status-bar badge: a monochrome VI silhouette on transparent pixels. The colored icon-192.png remains the notification image and app icon. The badge was derived from logo-vi.png using the built-in image editor, with the prompt to keep only solid VI silhouettes on a transparent background; its alpha was preserved when resized to 96 pixels. Rebuild and deploy the frontend, then open the app so its service worker updates. Existing notifications retain their old icon; newly received notifications use the updated badge.
