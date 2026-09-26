@@ -94,6 +94,7 @@ public class NewsRepository {
         redis.sortedSet(String.class).zadd(key("queue"), System.currentTimeMillis() + seconds * 1000L, OfficialPage.identity(url));
     }
     public List<JsonNode> list(String kind, int page, int size) {
+        if ("articles".equals(kind)) return articles(page, size);
         int count = Math.clamp(size, 1, 100);
         var result = new ArrayList<JsonNode>();
         for (String id : redis.sortedSet(String.class).zrange(key("index:" + kind),
@@ -103,13 +104,46 @@ public class NewsRepository {
         }
         return result;
     }
+    /** Sort before pagination, including legacy indexes scored before publication dates were known. */
+    private List<JsonNode> articles(int page, int size) {
+        var index = redis.sortedSet(String.class).zrange(key("index:articles"), 0, -1);
+        record Article(JsonNode value, long date, String id) {}
+        var articles = new ArrayList<Article>();
+        if (index != null) for (int offset = 0; offset < index.size(); offset += 100) {
+            int end = Math.min(offset + 100, index.size());
+            var keys = new ArrayList<String>();
+            for (int i = offset; i < end; i++) keys.add(key("articles:" + index.get(i)));
+            var records = redis.execute("MGET", keys.toArray(String[]::new));
+            for (int i = offset; i < end; i++) {
+                var raw = records.get(i - offset);
+                if (raw == null) continue;
+                try {
+                    JsonNode article = json.readTree(raw.toString());
+                    Long published = publicationTime(article.path("publishedAt").asText());
+                    long date = published != null ? published : (long)redis.sortedSet(String.class).zscore(key("index:articles"), index.get(i)).orElse(0);
+                    articles.add(new Article(article, date, index.get(i).toString()));
+                } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+                    throw new IllegalStateException("Invalid news record articles:" + index.get(i), invalid);
+                }
+            }
+        }
+        articles.sort(Comparator.comparingLong(Article::date).reversed().thenComparing(Article::id));
+        long start = (long)Math.max(0, page) * Math.clamp(size, 1, 100);
+        return articles.stream().skip(start).limit(Math.clamp(size, 1, 100)).map(Article::value).toList();
+    }
+    private static Long publicationTime(String value) {
+        try { return OffsetDateTime.parse(value).toInstant().toEpochMilli(); }
+        catch (java.time.DateTimeException invalid) {
+            try { return java.time.LocalDate.parse(value).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli(); }
+            catch (java.time.DateTimeException missing) { return null; }
+        }
+    }
     public long count(String kind) { return redis.sortedSet(String.class).zcard(key("index:" + kind)); }
     public void upsert(String kind, ObjectNode record) {
         String id = record.path("id").asText();
         if (id.isBlank()) throw new IllegalArgumentException("Record identity required");
-        long score;
-        try { score = OffsetDateTime.parse(record.path("publishedAt").asText()).toInstant().toEpochMilli(); }
-        catch (Exception e) { score = System.currentTimeMillis(); }
+        Long published = publicationTime(record.path("publishedAt").asText());
+        long score = published != null ? published : System.currentTimeMillis();
         // Keep verified fields when enrichment is incomplete; indexes and records change together.
         redis.execute("EVAL", """
             local oldraw=redis.call('GET',KEYS[1])
@@ -119,9 +153,9 @@ public class NewsRepository {
               if v ~= cjson.null and v ~= '' then old[k]=v end
             end
             redis.call('SET',KEYS[1],cjson.encode(old))
-            if not redis.call('ZSCORE',KEYS[2],ARGV[3]) then redis.call('ZADD',KEYS[2],ARGV[2],ARGV[3]) end
+            if ARGV[4]=='1' or not redis.call('ZSCORE',KEYS[2],ARGV[3]) then redis.call('ZADD',KEYS[2],ARGV[2],ARGV[3]) end
             return 1
-            """, "2", key(kind + ":" + id), key("index:" + kind), record.toString(), Long.toString(score), id);
+            """, "2", key(kind + ":" + id), key("index:" + kind), record.toString(), Long.toString(score), id, published != null ? "1" : "0");
     }
     public long nextRevision(String id) { return redis.value(Long.class).incr(key("revision:"+id)); }
 

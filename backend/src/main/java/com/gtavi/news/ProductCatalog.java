@@ -26,17 +26,18 @@ public class ProductCatalog {
     }
 
     static List<ObjectNode> group(List<JsonNode> observations) {
+        var album = new AlbumIdentity(observations);
         var linkedNames = new HashMap<String, Set<String>>();
         for (JsonNode item : observations) if (!item.path("purchaseUrl").asText("").isBlank())
-            linkedNames.computeIfAbsent(name(item), ignored -> new LinkedHashSet<>()).add(identity(item));
+            linkedNames.computeIfAbsent(name(item), ignored -> new LinkedHashSet<>()).add(identity(item, album.matches(item)));
         var groups = new LinkedHashMap<String, ObjectNode>();
         var choices = new HashMap<String, LinkedHashMap<String, ObjectNode>>();
         // Oldest first means fresh verified details win, while missing details preserve old values.
         var ordered = new ArrayList<>(observations);
         ordered.sort(Comparator.comparing(item -> item.path("updatedAt").asText("")));
         for (JsonNode item : ordered) {
-            String key = identity(item);
-            if (!album(item) && item.path("purchaseUrl").asText("").isBlank()) {
+            String key = identity(item, album.matches(item));
+            if (!album.matches(item) && item.path("purchaseUrl").asText("").isBlank()) {
                 var matches = linkedNames.get(name(item));
                 if (matches != null && matches.size() == 1) key = matches.iterator().next();
             }
@@ -46,7 +47,7 @@ public class ProductCatalog {
                     merged.set(entry.getKey(), entry.getValue());
             });
             merged.put("id", OfficialPage.fingerprint(key));
-            if (album(item)) {
+            if (album.matches(item)) {
                 merged.put("name", "Grand Theft Auto VI: The Album").put("category", "ALBUM");
                 merged.remove("limited"); // Limited applies to a format, not every copy of the album.
             }
@@ -80,14 +81,8 @@ public class ProductCatalog {
         return item.path("name").asText("").toLowerCase(Locale.ROOT)
             .replaceAll("[^\\p{L}\\p{N}]+", " ").strip();
     }
-    private static boolean album(JsonNode item) {
-        String url = item.path("purchaseUrl").asText("");
-        return Set.of("MUSIC", "ALBUM", "VINYL", "CD").contains(item.path("category").asText())
-            && (name(item).matches("(?:grand theft auto vi|gta vi) the album(?: .*)?")
-                || url.startsWith("https://gtavithealbum.lnk.to/"));
-    }
-    private static String identity(JsonNode item) {
-        if (album(item)) return "gta-vi:the-album";
+    private static String identity(JsonNode item, boolean album) {
+        if (album) return "gta-vi:the-album";
         String url = item.path("purchaseUrl").asText("");
         // Distinct structured SKUs retain their original identity even at a shared purchase URL.
         if (!url.isBlank()) {

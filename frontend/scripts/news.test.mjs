@@ -110,3 +110,46 @@ test('album formats retain limited-edition and purchase labels on one card', () 
   assert.ok(html.includes('limitededitionvinyl'));
   assert.ok(html.includes('Price not announced'));
 });
+
+async function componentModule(path, replacements = {}) {
+  let compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), { compilerOptions: {
+    jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022,
+  } }).outputText;
+  for (const dependency of ['react/jsx-runtime', 'react']) {
+    const url = JSON.stringify(pathToFileURL(require.resolve(dependency)).href);
+    compiled = compiled.replaceAll('"' + dependency + '"', url).replaceAll("'" + dependency + "'", url);
+  }
+  for (const [from, to] of Object.entries(replacements)) compiled = compiled.replaceAll(from, to);
+  return import('data:text/javascript;base64,' + Buffer.from(compiled).toString('base64'));
+}
+const cardsUrl = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64');
+const { NewsCarousel, swipeStep } = await componentModule('../src/features/news/NewsCarousel.tsx', { "'./NewsCards'": JSON.stringify(cardsUrl) });
+const { sectionAtPosition } = await componentModule('../src/hooks/useActiveSection.ts');
+const announcements = [
+  { id: 'newest', title: 'Newest announcement', sourceUrl: product.sourceUrl, category: 'NEWS' },
+  { id: 'older', title: 'Older announcement', sourceUrl: product.sourceUrl, category: 'NEWS' },
+];
+test('news renders one card, opens linked older articles, and exposes navigation', () => {
+  const props = { items: announcements, hasMore: true, busy: false, onLoadMore() {} };
+  const html = renderToStaticMarkup(React.createElement(NewsCarousel, props));
+  assert.equal((html.match(/<article/g) ?? []).length, 1);
+  assert.ok(html.includes('Newest announcement'));
+  assert.ok(!html.includes('id="news-older"'));
+  assert.ok(html.includes('Load older announcements'));
+  const linked = renderToStaticMarkup(React.createElement(NewsCarousel, { ...props, selectedId: 'older' }));
+  assert.ok(linked.includes('id="news-older"'));
+  assert.ok(!linked.includes('id="news-newest"'));
+});
+test('swipes change cards only for deliberate horizontal movement', () => {
+  assert.equal(swipeStep(-90, 10), 1);
+  assert.equal(swipeStep(90, -10), -1);
+  assert.equal(swipeStep(-20, 0), 0);
+  assert.equal(swipeStep(90, 120), 0);
+});
+test('scroll navigation handles tall sections, reverse scrolling, and the final short section', () => {
+  assert.equal(sectionAtPosition([{ id: 'editions', top: -1800 }, { id: 'music', top: 220 }], 120, false), 'editions');
+  assert.equal(sectionAtPosition([{ id: 'editions', top: -2100 }, { id: 'music', top: 100 }], 120, false), 'music');
+  assert.equal(sectionAtPosition([{ id: 'editions', top: -1800 }, { id: 'music', top: 220 }], 120, false), 'editions');
+  assert.equal(sectionAtPosition([{ id: 'updates', top: -50 }, { id: 'alerts', top: 500 }], 120, true), 'alerts');
+  assert.equal(sectionAtPosition([], 120, false), undefined);
+});

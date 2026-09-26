@@ -312,3 +312,7 @@ The editions, main-page and retailer extractors share an explicit system-prompt 
 ### Extraction prompt contracts
 
 All six extractors share explicit evidence and unknown-value rules. Prompts match their DTO fields, platform/edition/media vocabularies, URL handling and downstream validation. Unknown preorder status cannot close an offer; exact product evidence supports locale-formatted prices without mixing listings. Prompt/DTO contracts are regression-tested through generated AI service requests. See the [full prompt and backend contract audit](docs/2026-09-26-prompt-contract-audit.md).
+
+### Album cards and news browsing
+
+Music formats from the official Album announcement are reconciled into one card, including older short-label records. Official news appears newest first in a swipeable, keyboard-accessible card reader, and the section navigation follows scrolling and asynchronous layout changes. See [catalog, news and navigation notes](docs/2026-09-26-catalog-news-navigation.md) for regression coverage and deployment details.

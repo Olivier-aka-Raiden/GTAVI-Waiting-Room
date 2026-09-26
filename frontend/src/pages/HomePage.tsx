@@ -1,3 +1,4 @@
+import { useActiveSection } from '../hooks/useActiveSection';
 import { NewsSection } from '../features/news/NewsSection';
 import { onForegroundMessage } from '../firebase/messaging';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -217,6 +218,8 @@ const TABS = [
   { id: 'alerts', label: 'Alerts', emoji: '🔔' },
 ] as const;
 
+const SECTION_IDS = TABS.map(tab => tab.id);
+
 function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
   notificationActive: boolean;
   activeTab: string;
@@ -224,10 +227,17 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
   lastCheck: string | null;
 }) {
   const [visible, setVisible] = useState(false);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const tabs = tabsRef.current;
+    const active = tabs?.querySelector<HTMLElement>('[aria-current]');
+    if (tabs && active) tabs.scrollTo({ left: active.offsetLeft - (tabs.clientWidth - active.clientWidth) / 2, behavior: 'auto' });
+  }, [activeTab]);
   const [minutesAgo, setMinutesAgo] = useState<number | null>(null);
 
   useEffect(() => {
     const onScroll = () => setVisible(window.scrollY > 300);
+    onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
@@ -245,7 +255,7 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
   }, [lastCheck]);
 
   return (
-    <header
+    <header id="section-navigation"
       className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 pt-[env(safe-area-inset-top,0px)] ${
         visible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'
       }`}
@@ -279,7 +289,7 @@ function StickyBar({ notificationActive, activeTab, onTabClick, lastCheck }: {
 
       {/* Tab row */}
       <nav className="bg-bg-primary/95 backdrop-blur-md border-b border-white/5" aria-label="Page sections">
-        <div className="max-w-2xl mx-auto px-4 py-1.5 flex sm:overflow-visible overflow-x-auto scrollbar-none gap-1">
+        <div ref={tabsRef} className="relative max-w-2xl mx-auto px-4 py-1.5 flex overflow-x-auto scrollbar-none gap-1">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -387,7 +397,7 @@ export function HomePage() {
 
     const el = document.getElementById(`section-${id}`);
     if (el) {
-      const stickyHeaderOffset = 104;
+      const stickyHeaderOffset = (document.getElementById('section-navigation')?.offsetHeight ?? 104) + 16;
       const top = el.getBoundingClientRect().top + window.scrollY - stickyHeaderOffset;
       window.scrollTo({ top, behavior });
     }
@@ -424,29 +434,7 @@ export function HomePage() {
     } catch { return; }
   }, [notificationActive]);
 
-  // ── Update active tab based on scroll position ──────────────────────────
-  useEffect(() => {
-    const sectionIds = TABS.map(t => `section-${t.id}`);
-    const elements = sectionIds.map(id => document.getElementById(id)).filter(Boolean) as HTMLElement[];
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Find the first section that's substantially visible
-        const visible = entries
-          .filter(e => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-
-        if (visible.length > 0) {
-          const id = visible[0].target.id.replace('section-', '');
-          setActiveTab(id);
-        }
-      },
-      { threshold: 0.3, rootMargin: '-104px 0px -50% 0px' }
-    );
-
-    elements.forEach(el => observer.observe(el));
-    return () => observer.disconnect();
-  }, [data]);
+  useActiveSection(!loading && !!data && !error, SECTION_IDS, setActiveTab);
 
   if (loading) return <LoadingSkeleton />;
   if (error) return <ErrorState message={error} onRetry={fetchData} />;

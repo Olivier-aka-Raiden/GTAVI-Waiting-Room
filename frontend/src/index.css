@@ -149,3 +149,16 @@ body {
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+/* A horizontal gesture changes news; vertical gestures continue page scrolling. */
+.news-card-stage { touch-action: pan-y; overflow: hidden; perspective: 1000px; }
+.news-card-enter { transform-origin: center; animation: news-card-in 280ms ease-out both; }
+.news-card-enter.older { --news-direction: 1; }
+.news-card-enter.newer { --news-direction: -1; }
+@keyframes news-card-in {
+  from { opacity: 0; transform: translateX(calc(var(--news-direction) * 32px)) rotateY(calc(var(--news-direction) * -5deg)) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .news-card-enter { animation: none; }
+}
