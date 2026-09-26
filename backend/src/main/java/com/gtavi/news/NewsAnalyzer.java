@@ -10,7 +10,7 @@ import java.util.*;
 /** AI proposes facts; provenance validation and deterministic metadata keep official news discoverable. */
 @ApplicationScoped
 public class NewsAnalyzer {
-    public static final String VERSION = "news-v3";
+    public static final String VERSION = "news-v4";
     @Inject AnnouncementExtractor ai;
     @Inject ObjectMapper json;
     @Inject StructuredProducts structured;
@@ -70,7 +70,8 @@ public class NewsAnalyzer {
                 }
                 if (extraction.products() == null || !relevant) continue;
                 for (var p : extraction.products()) {
-                    if (p.name() == null || !chunk.contains(p.name()) || !supported(chunk,p.evidence())) continue;
+                    if (p.name() == null || !chunk.contains(p.name()) || !supported(chunk,p.evidence())
+                            || !p.evidence().contains(p.name())) continue;
                     if (p.name().matches("(?is).*(?:GTA|Grand Theft Auto)\\s*V\\b.*")) continue;
                     var product = json.valueToTree(p);
                     var item = (ObjectNode)product;
@@ -78,9 +79,7 @@ public class NewsAnalyzer {
                     item.put("purchaseUrl", buy);
                     String image = verifiedUrl(page, chunk, p.imageUrl());
                     item.put("imageUrl", image == null ? page.imageUrl() : image);
-                    if (p.price() == null || p.price() <= 0 || p.currency() == null
-                        || !p.currency().matches("[A-Z]{3}") || !chunk.contains(p.currency())
-                        || !chunk.contains(java.math.BigDecimal.valueOf(p.price()).stripTrailingZeros().toPlainString())) {
+                    if (!ProductEvidence.price(p.evidence(), p.price(), p.currency())) {
                         item.putNull("price"); item.putNull("currency");
                     }
                     if (!Set.of("COLLECTIBLE","VINYL","CD","ALBUM","MERCHANDISE","GAME").contains(
@@ -88,8 +87,6 @@ public class NewsAnalyzer {
                     if (!Set.of("PREORDER","AVAILABLE","OUT_OF_STOCK","ANNOUNCED").contains(
                             Objects.toString(p.availability(),""))) item.put("availability","ANNOUNCED");
                     if (p.description()==null || !chunk.contains(p.description())) item.put("description",page.description());
-                    if (p.limited()!=null && !p.evidence().toLowerCase(Locale.ROOT).contains("limited")) item.putNull("limited");
-                    if (p.gameIncluded()!=null && !p.evidence().toLowerCase(Locale.ROOT).matches("(?s).*(game included|game sold separately|includes the game).*")) item.putNull("gameIncluded");
                     item.put("sourceUrl", page.url());
                     item.put("id", buy == null ? OfficialPage.fingerprint(OfficialPage.canonical(page.url()) + "|" + slug(p.name())) : OfficialPage.identity(buy));
                     products.add(item);

@@ -23,7 +23,7 @@ final class ExtractionMerge {
                     String key=identity(item);
                     if(items.get(key) instanceof ObjectNode old && item.isObject()) {
                         var merged=old.deepCopy();
-                        item.fields().forEachRemaining(part->{if(!part.getValue().isNull()) merged.set(part.getKey(),part.getValue());});
+                        into(merged, item);
                         items.put(key,merged);
                     } else items.put(key,item);
                 });

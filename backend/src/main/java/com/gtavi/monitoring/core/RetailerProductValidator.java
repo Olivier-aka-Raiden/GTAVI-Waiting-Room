@@ -40,9 +40,8 @@ public class RetailerProductValidator {
     );
 
     private static final Set<String> EDITIONS = Set.of(
-        "STANDARD", "ULTIMATE", "COLLECTOR", "DELUXE", "UNKNOWN"
+        "STANDARD", "ULTIMATE", "COLLECTOR", "DELUXE", "SPECIAL", "BUNDLE", "UPGRADE", "UNKNOWN"
     );
-    private static final Set<String> PLATFORMS = Set.of("PS5", "XSX", "PC", "UNKNOWN");
     private static final Set<String> AVAILABILITY = Set.of(
         "IN_STOCK", "OUT_OF_STOCK", "PREORDER", "COMING_SOON", "UNAVAILABLE", "UNKNOWN"
     );
@@ -75,13 +74,13 @@ public class RetailerProductValidator {
 
             // Platform is required — it's how we deduplicate listings per retailer
             String aiPlatform = text(candidate, "platform");
-            String platform = normalizeEnum(aiPlatform, PLATFORMS, null);
+            String platform = PlatformNames.normalize(aiPlatform);
             if (platform == null) {
                 // Try to infer from the name if AI didn't provide a valid platform
                 platform = inferPlatform(name);
             }
             if (platform == null) {
-                Log.warnf("Rejected listing from %s without recognizable platform: %s", sourceCode, name);
+                Log.warnf("Rejected listing from %s without recognizable platform: %s (platform=%s)", sourceCode, name, aiPlatform);
                 continue;
             }
 
@@ -116,6 +115,9 @@ public class RetailerProductValidator {
         }
         accepted.removeAll();
         unique.values().forEach(accepted::add);
+        if ("ROCKSTAR_STORE".equals(sourceCode) && accepted.isEmpty()) {
+            throw new IllegalArgumentException("Rockstar extraction contained no usable edition offers; retaining existing offers");
+        }
         validated.set("products", accepted);
         return validated;
     }
@@ -135,6 +137,10 @@ public class RetailerProductValidator {
 
         // 1. Reject GTA V (the old game) unless it's actually GTA VI
         if (isGtaVOnly(lower, compact)) return false;
+
+        // Music and merchandise belong to the announcement pipeline, even when the model assigns a platform.
+        if (EXCLUDED_NON_GAME_TERMS.stream().anyMatch(term -> java.util.regex.Pattern.compile(
+                "\\b" + java.util.regex.Pattern.quote(term) + "\\b").matcher(lower).find())) return false;
 
         // 2. Name explicitly mentions GTA VI → accept
         boolean mentionsGame = lower.contains("grand theft auto vi")
@@ -228,6 +234,9 @@ public class RetailerProductValidator {
         if (lower.contains("collector")) return "COLLECTOR";
         if (lower.contains("ultimate")) return "ULTIMATE";
         if (lower.contains("deluxe")) return "DELUXE";
+        if (lower.contains("upgrade")) return "UPGRADE";
+        if (lower.contains("bundle")) return "BUNDLE";
+        if (lower.contains("special")) return "SPECIAL";
         return "STANDARD";
     }
 

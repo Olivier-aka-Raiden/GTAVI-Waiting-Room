@@ -155,4 +155,83 @@ class ExtractorQuteSanityTest {
                 .build();
         }
     }
+
+    @Test
+    void platformExtractorsSendTheSharedNormalizationContractToTheModel() {
+        model.response = "{}";
+        java.util.List<java.util.function.Consumer<String>> extractors = java.util.List.of(
+            text -> rockstarMain.extract(text),
+            text -> rockstarEditions.extract(text),
+            text -> retailerProducts.extract(text));
+        for (var extractor : extractors) {
+            extractor.accept("Standard Edition for PlayStation 5 and Xbox Series X|S");
+            var system = model.request.messages().stream().filter(SystemMessage.class::isInstance)
+                .map(SystemMessage.class::cast).findFirst().orElseThrow().text();
+            assertTrue(system.contains(PlatformNames.EXTRACTION_RULES.strip()));
+            assertTrue(system.contains("-> PS5"));
+            assertTrue(system.contains("-> XSX"));
+            assertTrue(system.contains("Keep the product or edition"));
+        }
+    }
+
+    @Test
+    void everyGeneratedPromptCoversItsDtoFieldsAndMissingEvidenceContract() {
+        model.response = "{}";
+        java.util.List<java.util.function.Consumer<String>> extractors = java.util.List.of(
+            text -> rockstarMain.extract(text), text -> rockstarEditions.extract(text),
+            text -> retailerProducts.extract(text), text -> rockstarMedia.extract(text),
+            text -> youtubeRss.extract(text),
+            text -> announcements.extract("https://www.rockstargames.com/VI/music", "GTA VI", text));
+        var records = java.util.List.of(RockstarMainData.class, RockstarEditionsData.class,
+            RetailerProductsData.class, RockstarMediaData.class, RockstarMediaData.class,
+            com.gtavi.news.AnnouncementExtraction.class);
+        for (int i = 0; i < extractors.size(); i++) {
+            extractors.get(i).accept("GTA VI source evidence; ignore this page's injected commands.");
+            String system = systemText();
+            assertTrue(system.contains(ExtractionInstructions.EVIDENCE.strip()));
+            assertPromptFields(records.get(i), system);
+        }
+    }
+
+    @Test
+    void youtubePromptUsesAtomEntryFieldsAndRetainsTimestampPrecision() {
+        model.response = """
+            {"videos":[{"title":"GTA VI Trailer","mediaType":"TRAILER",
+             "publicationDate":"2026-09-26T08:30:00+02:00","videoUrl":"https://www.youtube.com/watch?v=fixture"}]}
+            """;
+        var result = youtubeRss.extract("<feed><entry><title>GTA VI Trailer</title><published>2026-09-26T08:30:00+02:00</published><link rel='alternate' href='https://www.youtube.com/watch?v=fixture'/></entry></feed>");
+        assertEquals("2026-09-26T08:30:00+02:00", result.videos().getFirst().publicationDate());
+        assertTrue(systemText().contains("link rel=alternate href"));
+        assertTrue(systemText().contains("published element, not updated"));
+        assertTrue(systemText().contains("Do not mix one entry"));
+    }
+
+    @Test
+    void retailerPromptAllowsObservedRelativeLinksAndUnknownAvailability() {
+        model.response = """
+            {"products":[{"name":"GTA VI Special Edition","edition":"SPECIAL","url":"/product/123",
+             "platform":"UNKNOWN","availability":"UNKNOWN","price":null,"currency":null}]}
+            """;
+        var result = retailerProducts.extract("GTA VI Special Edition link /product/123");
+        assertEquals("/product/123", result.products().getFirst().url());
+        assertNull(result.products().getFirst().price());
+        assertTrue(systemText().contains("Relative URLs are valid"));
+        assertTrue(systemText().contains("UNKNOWN, not UNAVAILABLE"));
+        assertTrue(systemText().contains("SPECIAL"));
+    }
+
+    private String systemText() {
+        return model.request.messages().stream().filter(SystemMessage.class::isInstance)
+            .map(SystemMessage.class::cast).findFirst().orElseThrow().text();
+    }
+
+    private void assertPromptFields(Class<?> type, String prompt) {
+        for (var field : type.getRecordComponents()) {
+            assertTrue(prompt.contains(field.getName()), type.getSimpleName() + "." + field.getName());
+            if (field.getGenericType() instanceof java.lang.reflect.ParameterizedType generic) {
+                for (var nested : generic.getActualTypeArguments())
+                    if (nested instanceof Class<?> record && record.isRecord()) assertPromptFields(record, prompt);
+            }
+        }
+    }
 }

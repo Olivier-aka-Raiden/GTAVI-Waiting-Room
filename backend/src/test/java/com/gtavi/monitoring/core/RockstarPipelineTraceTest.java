@@ -28,11 +28,13 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
     @Inject ObjectMapper mapper;
     @Inject MonitoringOrchestrator orchestrator;
     @Inject RedisPersistence persistence;
+    @Inject com.gtavi.news.NewsRepository processing;
 
     private JsonNode editions;
     private boolean fetchFails;
     private int fetchCalls;
     private int extractionCalls;
+    private int discardedResults;
 
     @BeforeEach
     void replaceRemoteBoundaries() throws Exception {
@@ -48,6 +50,7 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
             }
         }, HttpFetcher.class);
         QuarkusMock.installMockForType(new AiExtractionService() {
+            @Override public void discardCompletedResult(String html, String sourceType) { discardedResults++; }
             @Override
             public ExtractionResult extractFromHtml(String content, String sourceType) {
                 extractionCalls++;
@@ -153,5 +156,85 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
             assertEquals(URL, offers.getFirst().getUrl());
             assertNull(offers.getFirst().getPrice());
         }
+    }
+
+    @Test
+    void fullPlatformNamesAndDuplicateAliasesRestoreRetiredOffers() {
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        for (String id : java.util.List.of("ed-standard", "ed-ultimate"))
+            persistence.getOffers(id).forEach(offer -> persistence.deactivateOffer(offer.getId()));
+        for (JsonNode item : editions.path("editions")) {
+            ((com.fasterxml.jackson.databind.node.ObjectNode)item).putArray("platforms")
+                .add("PlayStation 5").add("PS5").add("Xbox Series X|S").add("Xbox Series S")
+                .addNull().add(" ").add("unrecognized future console");
+        }
+        for (int run = 0; run < 2; run++) {
+            assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+            assertPersistedOffers("ed-standard");
+            assertPersistedOffers("ed-ultimate");
+            assertEquals(4, persistence.getLatestSuccessfulSnapshotData(SOURCE).path("products").size());
+        }
+    }
+
+    @Test
+    void unrecognizedNonEmptyPlatformListsRetainGeneralEditionLinks() {
+        for (JsonNode item : editions.path("editions"))
+            ((com.fasterxml.jackson.databind.node.ObjectNode)item).putArray("platforms")
+                .add("new console").addNull().add("");
+        for (int run = 0; run < 2; run++) {
+            assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+            for (String id : java.util.List.of("ed-standard", "ed-ultimate")) {
+                var offers = persistence.getOffers(id);
+                assertEquals(1, offers.size());
+                assertEquals("UNKNOWN", offers.getFirst().getPlatform());
+                assertEquals(URL, offers.getFirst().getUrl());
+            }
+        }
+    }
+
+    @Test
+    void emptyEditionExtractionCannotRetireExistingOffersOrAdvanceBaseline() {
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        JsonNode previous = persistence.getLatestSuccessfulSnapshotData(SOURCE);
+        ((com.fasterxml.jackson.databind.node.ObjectNode)editions).putArray("editions");
+        for (int run = 0; run < 3; run++) {
+            assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).failedSources());
+            assertEquals(previous, persistence.getLatestSuccessfulSnapshotData(SOURCE));
+            assertPersistedOffers("ed-standard");
+            assertPersistedOffers("ed-ultimate");
+        }
+    }
+
+    @Test
+    void rejectedStagedProductsCannotBePersistedAsAnEmptySuccessfulStore() throws Exception {
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        JsonNode previous = persistence.getLatestSuccessfulSnapshotData(SOURCE);
+        processing.write("observation:" + SOURCE, mapper.readTree("""
+            {"products":[{"name":"Ultimate Edition","platform":"unsupported platform","url":"https://www.rockstargames.com/VI/editions"}]}
+            """));
+        for (int run = 0; run < 3; run++) {
+            assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).failedSources());
+            assertEquals(previous, persistence.getLatestSuccessfulSnapshotData(SOURCE));
+            assertPersistedOffers("ed-standard");
+            assertPersistedOffers("ed-ultimate");
+        }
+    }
+
+    @Test
+    void unknownPreorderPreservesOffersButExplicitClosureIsApplied() {
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        for (JsonNode item : editions.path("editions"))
+            ((com.fasterxml.jackson.databind.node.ObjectNode)item).putNull("preorderAvailable");
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        assertPersistedOffers("ed-standard");
+        assertPersistedOffers("ed-ultimate");
+        assertTrue(persistence.getEditions("GTA_VI").stream()
+            .allMatch(edition -> "PREORDER_AVAILABLE".equals(edition.getStatus())));
+        for (JsonNode item : editions.path("editions"))
+            ((com.fasterxml.jackson.databind.node.ObjectNode)item).put("preorderAvailable",false);
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        for (String id : java.util.List.of("ed-standard","ed-ultimate"))
+            assertTrue(persistence.getOffers(id).stream().allMatch(offer ->
+                !offer.isPreorderAvailable() && "UNAVAILABLE".equals(offer.getAvailabilityStatus())));
     }
 }

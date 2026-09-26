@@ -216,8 +216,8 @@ public class DiffEngine {
 
     private List<ChangeEvent> diffPreorder(String sourceCode, String sourceUrl,
                                             JsonNode prev, JsonNode curr) {
-        Boolean prevPreorder = prev.has("preorderAvailable") ? prev.get("preorderAvailable").asBoolean() : null;
-        Boolean currPreorder = curr.has("preorderAvailable") ? curr.get("preorderAvailable").asBoolean() : null;
+        Boolean prevPreorder = prev.hasNonNull("preorderAvailable") ? prev.get("preorderAvailable").asBoolean() : null;
+        Boolean currPreorder = curr.hasNonNull("preorderAvailable") ? curr.get("preorderAvailable").asBoolean() : null;
 
         if (currPreorder == null || currPreorder.equals(prevPreorder)) return List.of();
 

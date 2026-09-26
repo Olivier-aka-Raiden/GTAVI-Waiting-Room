@@ -304,3 +304,11 @@ Retailer URLs use stable identities so encoded URL variants cannot create duplic
 ### Android notification icon
 
 The service worker uses assets/notification-badge-96.png for the small Android status-bar badge: a monochrome VI silhouette on transparent pixels. The colored icon-192.png remains the notification image and app icon. The badge was derived from logo-vi.png using the built-in image editor, with the prompt to keep only solid VI silhouettes on a transparent background; its alpha was preserved when resized to 96 pixels. Rebuild and deploy the frontend, then open the app so its service worker updates. Existing notifications retain their old icon; newly received notifications use the updated badge.
+
+### AI platform normalization
+
+The editions, main-page and retailer extractors share an explicit system-prompt contract for platform labels. Cached or noncanonical labels are normalized consistently, while an edition with unrecognized platform details retains its general official link. Unusable Rockstar observations preserve previous offers and retry instead of reporting an empty store. See the [platform-contract correction and regression coverage](docs/2026-09-26-rockstar-platform-contract.md).
+
+### Extraction prompt contracts
+
+All six extractors share explicit evidence and unknown-value rules. Prompts match their DTO fields, platform/edition/media vocabularies, URL handling and downstream validation. Unknown preorder status cannot close an offer; exact product evidence supports locale-formatted prices without mixing listings. Prompt/DTO contracts are regression-tested through generated AI service requests. See the [full prompt and backend contract audit](docs/2026-09-26-prompt-contract-audit.md).

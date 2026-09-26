@@ -85,4 +85,30 @@ class TypedExtractionResumeTest extends RedisBackedTest {
     private RockstarMainData facts(String date) {
         return new RockstarMainData(date, List.of("PS5"), true, null, "Official announcement");
     }
+
+    @Test void discardedEmptyEditionResultIsExtractedAgainOnNextRun() {
+        var service = service(4);
+        var calls = new AtomicInteger();
+        service.rockstarEditions = content -> {
+            if (calls.incrementAndGet() == 1) return new RockstarEditionsData(List.of(), false);
+            return new RockstarEditionsData(List.of(new RockstarEditionsData.EditionItem(
+                "Standard Edition", "STANDARD", null, List.of(), List.of("PlayStation 5"), true)), false);
+        };
+        String html = "<main>Standard Edition available to pre-order on PlayStation 5</main>";
+        assertTrue(service.extractFromHtml(html, "rockstar_editions").data().path("editions").isEmpty());
+        service.discardCompletedResult(html, "rockstar_editions");
+        assertEquals(1, service.extractFromHtml(html, "rockstar_editions").data().path("editions").size());
+        assertEquals(2, calls.get());
+    }
+
+    @Test void completedResultInvalidationDoesNotDiscardPartialProgress() {
+        var service = service(1);
+        service.rockstarMain = content -> facts("2026-11-19");
+        String html = "<main>" + "source evidence ".repeat(6000) + "</main>";
+        var first = service.extractFromHtml(html, "rockstar_main");
+        assertEquals(ExtractionResult.State.PENDING, first.state());
+        service.discardCompletedResult(html, "rockstar_main");
+        var next = service.extractFromHtml(html, "rockstar_main");
+        assertTrue(next.processedCharacters() > first.processedCharacters());
+    }
 }

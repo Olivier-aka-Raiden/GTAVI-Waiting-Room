@@ -57,7 +57,7 @@ public class GameProjectionService {
         if(fact.hasNonNull("description")) edition.setDescription(fact.path("description").asText());
         String image=OfficialPage.resolve("https://www.rockstargames.com",fact.path("imageUrl").asText());
         if(image!=null) edition.setImageUrl(image);
-        if(fact.has("preorderAvailable")) edition.setStatus(fact.path("preorderAvailable").asBoolean()?"PREORDER_AVAILABLE":"ANNOUNCED");
+        if(fact.hasNonNull("preorderAvailable")) edition.setStatus(fact.path("preorderAvailable").asBoolean()?"PREORDER_AVAILABLE":"ANNOUNCED");
         else if(edition.getStatus()==null) edition.setStatus("ANNOUNCED");
         edition.setUpdatedAt(OffsetDateTime.now());
         persistence.saveEdition(edition);

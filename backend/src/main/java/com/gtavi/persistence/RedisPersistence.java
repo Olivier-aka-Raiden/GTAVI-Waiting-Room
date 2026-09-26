@@ -314,11 +314,17 @@ public class RedisPersistence {
             BigDecimal observedPrice = price;
             if (observedPrice == null && previous != null && sameText(previous, "currency", currency)
                     && previous.path("price").isNumber()) observedPrice = previous.path("price").decimalValue();
+            String observedAvailability = availabilityStatus;
+            boolean observedPreorder = preorderAvailable;
+            if (previous != null && (observedAvailability == null || "UNKNOWN".equals(observedAvailability))) {
+                observedAvailability = text(previous, "availabilityStatus");
+                observedPreorder = previous.path("preorderAvailable").asBoolean();
+            }
             boolean changed = previous == null
                 || !sameText(previous, "price", observedPrice == null ? null : observedPrice.toPlainString())
                 || !sameText(previous, "currency", currency)
                 || !sameText(previous, "url", url)
-                || !sameText(previous, "availabilityStatus", availabilityStatus);
+                || !sameText(previous, "availabilityStatus", observedAvailability);
 
             ObjectNode offer = previous != null && previous.isObject()
                 ? ((ObjectNode) previous).deepCopy() : objectMapper.createObjectNode();
@@ -330,8 +336,8 @@ public class RedisPersistence {
             if (observedPrice != null) offer.put("price", observedPrice); else offer.putNull("price");
             putNullable(offer, "currency", currency);
             putNullable(offer, "url", url);
-            putNullable(offer, "availabilityStatus", availabilityStatus);
-            offer.put("preorderAvailable", preorderAvailable);
+            putNullable(offer, "availabilityStatus", observedAvailability);
+            offer.put("preorderAvailable", observedPreorder);
             offer.put("active", true);
             offer.put("missedChecks", 0);
             offer.put("lastSuccessfulCheckAt", now.toString());

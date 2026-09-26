@@ -15,7 +15,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 public class AiExtractionService {
     private static final int MAX_CHARS = 24_000;
     // Invalidate outputs made with conversational memory or the previous input preparation.
-    private static final String VERSION = "typed-v3";
+    private static final String VERSION = "typed-v4";
 
     @Inject NewsRepository checkpoints;
     @ConfigProperty(name="gtavi.monitoring.ai-calls-per-source", defaultValue="4") int maxCalls;
@@ -66,6 +66,14 @@ public class AiExtractionService {
                 sourceType, calls, offset, total);
             return ExtractionResult.failed("Extraction or checkpoint failed: " + e.getClass().getSimpleName(), offset, total);
         }
+    }
+
+    /** A structurally valid AI response can still contain no usable source facts. */
+    public void discardCompletedResult(String html, String sourceType) {
+        String clean = ExtractionInput.prepare(html, sourceType);
+        String key = "typed-extraction:" + OfficialPage.fingerprint(VERSION + "|" + sourceType + "|" + clean);
+        JsonNode state = checkpoints.read(key);
+        if (state != null && state.path("complete").asBoolean()) checkpoints.delete(key);
     }
 
     private JsonNode extractChunk(String chunk, String sourceType) {

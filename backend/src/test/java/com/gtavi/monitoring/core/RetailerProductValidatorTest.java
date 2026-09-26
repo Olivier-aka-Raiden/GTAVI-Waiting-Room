@@ -98,9 +98,8 @@ class RetailerProductValidatorTest {
     }
 
     @Test
-    void acceptsGtaViSoundtrackIfUserWantsIt() throws Exception {
-        // User explicitly said: accept everything mentioning GTA VI, even soundtracks.
-        // Platform requirement still applies though — a soundtrack with PS5 platform passes.
+    void rejectsSoundtrackEvenWhenTheModelAssignsAGamePlatform() throws Exception {
+        // Music belongs to the news/music pipeline, not a game edition retailer offer.
         var extracted = mapper.readTree("""
             {"products":[
               {"name":"Grand Theft Auto VI Official Soundtrack","url":"/music/ost","platform":"PS5"}
@@ -109,8 +108,31 @@ class RetailerProductValidatorTest {
 
         var result = validator.validate("TEST", "https://example.com/gta-vi", extracted);
 
-        assertEquals(1, result.get("products").size());
-        assertEquals("Grand Theft Auto VI Official Soundtrack",
-            result.get("products").get(0).get("name").asText());
+        assertTrue(result.get("products").isEmpty());
+    }
+
+    @Test
+    void acceptsFullPlatformNamesFromStagedOrCachedRockstarProducts() throws Exception {
+        var data = mapper.readTree("""
+            {"products":[
+              {"name":"Ultimate Edition","platform":"PlayStation 5","url":"/VI/editions"},
+              {"name":"Ultimate Edition","platform":"Xbox Series X|S","url":"/VI/editions"},
+              {"name":"Standard Edition","edition":"STANDARD","platform":"PlayStation 5","url":"/VI/editions"},
+              {"name":"Standard Edition","edition":"STANDARD","platform":"Xbox Series X / S","url":"/VI/editions"}
+            ]}
+            """);
+        var products = validator.validate("ROCKSTAR_STORE", "https://www.rockstargames.com/VI/editions", data).path("products");
+        assertEquals(4, products.size());
+        assertEquals("PS5", products.get(0).path("platform").asText());
+        assertEquals("XSX", products.get(1).path("platform").asText());
+    }
+
+    @Test
+    void rejectsUnusableRockstarObservationsInsteadOfReportingAnEmptyStore() throws Exception {
+        for (String data : java.util.List.of("{\"products\":[]}",
+                "{\"products\":[{\"name\":\"Standard Edition\",\"platform\":\"future\",\"url\":\"/VI/editions\"}]}")) {
+            assertThrows(IllegalArgumentException.class, () -> validator.validate("ROCKSTAR_STORE",
+                "https://www.rockstargames.com/VI/editions", mapper.readTree(data)));
+        }
     }
 }
