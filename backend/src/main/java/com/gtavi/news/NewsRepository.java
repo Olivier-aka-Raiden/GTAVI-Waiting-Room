@@ -105,9 +105,20 @@ public class NewsRepository {
         return result;
     }
     /** Sort before pagination, including legacy indexes scored before publication dates were known. */
+    public Map<String, Object> newsPage(int page, int size) {
+        var articles = orderedArticles();
+        return Map.of("items", articleSlice(articles, page, size), "total", articles.size());
+    }
     private List<JsonNode> articles(int page, int size) {
+        return articleSlice(orderedArticles(), page, size);
+    }
+    private List<JsonNode> articleSlice(List<JsonNode> articles, int page, int size) {
+        long start = (long)Math.max(0, page) * Math.clamp(size, 1, 100);
+        return articles.stream().skip(start).limit(Math.clamp(size, 1, 100)).toList();
+    }
+    private List<JsonNode> orderedArticles() {
         var index = redis.sortedSet(String.class).zrange(key("index:articles"), 0, -1);
-        record Article(JsonNode value, long date, String id) {}
+        record Article(JsonNode value, boolean dated, long date, String id) {}
         var articles = new ArrayList<Article>();
         if (index != null) for (int offset = 0; offset < index.size(); offset += 100) {
             int end = Math.min(offset + 100, index.size());
@@ -121,15 +132,56 @@ public class NewsRepository {
                     JsonNode article = json.readTree(raw.toString());
                     Long published = publicationTime(article.path("publishedAt").asText());
                     long date = published != null ? published : (long)redis.sortedSet(String.class).zscore(key("index:articles"), index.get(i)).orElse(0);
-                    articles.add(new Article(article, date, index.get(i).toString()));
+                    articles.add(new Article(article, published != null, date, index.get(i).toString()));
                 } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
                     throw new IllegalStateException("Invalid news record articles:" + index.get(i), invalid);
                 }
             }
         }
-        articles.sort(Comparator.comparingLong(Article::date).reversed().thenComparing(Article::id));
-        long start = (long)Math.max(0, page) * Math.clamp(size, 1, 100);
-        return articles.stream().skip(start).limit(Math.clamp(size, 1, 100)).map(Article::value).toList();
+        // Discovery time is not publication time: undated pages follow verified announcements.
+        articles.sort(Comparator.comparing(Article::dated).reversed()
+            .thenComparing(Comparator.comparingLong(Article::date).reversed()).thenComparing(Article::id));
+        var representedPages = new HashSet<String>();
+        for (Article entry : articles) if (entry.dated()) {
+            JsonNode article = entry.value();
+            String category = article.path("category").asText();
+            if (!Set.of("MUSIC", "COLLECTIBLE").contains(category)) continue;
+            for (String field : List.of("sources", "relationshipLinks"))
+                for (JsonNode link : article.path(field)) addRepresentedPage(representedPages, category, link.asText());
+            for (JsonNode product : article.path("products")) {
+                addRepresentedPage(representedPages, category, product.path("purchaseUrl").asText());
+                for (JsonNode offer : product.path("offers"))
+                    addRepresentedPage(representedPages, category, offer.path("purchaseUrl").asText());
+            }
+        }
+        return articles.stream().filter(entry -> entry.dated() || !representedPages.contains(
+            representedPage(entry.value().path("category").asText(), entry.value().path("sourceUrl").asText())))
+            .map(Article::value).toList();
+    }
+    private static String representedPage(String category, String url) {
+        if (!OfficialPage.allowed(url)) return "";
+        return category + "|" + OfficialPage.canonical(url);
+    }
+    private static void addRepresentedPage(Set<String> pages, String category, String url) {
+        String page = representedPage(category, url);
+        if (!page.isEmpty()) pages.add(page);
+    }
+    /** Date-only enrichment is quiet and does not regenerate events or invalidate AI work. */
+    public void recoverPublicationDate(String sourceUrl, String published) {
+        if (publicationTime(published) == null) return;
+        String sourceId = OfficialPage.identity(sourceUrl);
+        JsonNode alias = read("identity:" + sourceId);
+        var ids = new LinkedHashSet<String>();
+        ids.add(sourceId);
+        if (alias != null && !alias.path("id").asText().isBlank()) ids.add(alias.path("id").asText());
+        for (String id : ids) {
+            JsonNode article = read("articles:" + id);
+            if (article == null || publicationTime(article.path("publishedAt").asText()) != null) continue;
+            // Only date this exact newswire article, not another announcement sharing a product.
+            if (!OfficialPage.allowed(article.path("sourceUrl").asText())
+                    || !OfficialPage.canonical(sourceUrl).equals(OfficialPage.canonical(article.path("sourceUrl").asText()))) continue;
+            upsert("articles", json.createObjectNode().put("id", id).put("publishedAt", published));
+        }
     }
     private static Long publicationTime(String value) {
         try { return OffsetDateTime.parse(value).toInstant().toEpochMilli(); }

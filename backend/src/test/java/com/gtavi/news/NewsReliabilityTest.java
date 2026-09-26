@@ -26,7 +26,7 @@ class NewsReliabilityTest extends RedisBackedTest {
         var full=NewswireClient.fromPost(shell,post);
         assertTrue(full.complete());
         assertTrue(full.content().contains("34"));
-        assertEquals("2026-09-17T00:00Z",full.publishedAt());
+        assertEquals("2026-09-17",full.publishedAt());
         assertTrue(full.links().stream().anyMatch(link->link.contains("gtavi-thealbum")));
     }
     @Test void archiveDiscoveryResumesCursorWhileCheckingHeadEachRun() throws Exception {

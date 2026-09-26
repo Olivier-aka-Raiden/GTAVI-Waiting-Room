@@ -64,7 +64,12 @@ public class NewsEventPolicy {
     }
     private boolean recent(JsonNode article) {
         try { return OffsetDateTime.parse(article.path("publishedAt").asText()).isAfter(OffsetDateTime.now().minusDays(lookbackDays)); }
-        catch(Exception ignored) { return true; }
+        catch(Exception ignored) {
+            try {
+                return !java.time.LocalDate.parse(article.path("publishedAt").asText())
+                    .isBefore(java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(lookbackDays));
+            } catch (java.time.DateTimeException unknown) { return true; }
+        }
     }
     private ChangeEvent event(ObjectNode article,String type,String occurrence,String title,String description,boolean notify) {
         var event = new ChangeEvent();

@@ -30,7 +30,8 @@ export function NewsSection() {
       if (kind === 'news') {
         const items = result.items as NewsItem[];
         // Keep older loaded pages while refreshing the newest announcements.
-        setNews(old => unique(append ? [...old, ...items] : [...items, ...old.filter(item => !items.some(fresh => fresh.id === item.id))]));
+        setNews(old => unique(append ? [...old, ...items] : result.total <= items.length ? items
+          : [...items, ...old.filter(item => !items.some(fresh => fresh.id === item.id))]));
       } else {
         const items = result.items as Collectible[];
         setProducts(old => unique(append ? [...old, ...items] : items));

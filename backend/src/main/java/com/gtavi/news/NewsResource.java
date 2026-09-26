@@ -14,7 +14,7 @@ public class NewsResource {
     @GET
     public Map<String,Object> news(@QueryParam("page") @DefaultValue("0") int page,
                                   @QueryParam("size") @DefaultValue("20") int size) {
-        return Map.of("items",repository.list("articles",page,size),"total",repository.count("articles"));
+        return repository.newsPage(page, size);
     }
     @GET @Path("/{id}")
     public JsonNode article(@PathParam("id") String id) {

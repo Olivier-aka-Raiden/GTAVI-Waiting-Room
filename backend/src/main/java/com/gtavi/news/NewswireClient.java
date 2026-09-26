@@ -63,8 +63,10 @@ public class NewswireClient {
         collect(post.path("tina").path("payload").path("content"), main, links, shell.url());
         String description = post.path("tina").path("payload").path("meta").path("blurb").asText(shell.description());
         String content = post.path("title").asText(shell.title()) + "\n" + post.path("subtitle").asText() + "\n" + description + "\n" + main.text();
+        String published = publicationDate(post.path("created").asText());
+        if (published.isBlank()) published = publicationDate(shell.publishedAt());
         return new OfficialPage(shell.url(), post.path("title").asText(shell.title()), description,
-            shell.imageUrl(), publicationDate(post.path("created").asText(shell.publishedAt())),
+            shell.imageUrl(), published,
             content, shell.structured() + "\n" + post.toString(), java.util.List.copyOf(links),
             main.text().length() > 120);
     }
@@ -87,11 +89,14 @@ public class NewswireClient {
     }
 
     static String publicationDate(String value) {
+        if (value == null || value.isBlank()) return "";
+        value = value.replace('\u00a0', ' ').replace('\u202f', ' ').strip();
         try { return OffsetDateTime.parse(value).toString(); } catch (Exception ignored) {}
+        try { return LocalDate.parse(value).toString(); } catch (Exception ignored) {}
         try {
             // The public API supplies a localized date without an offset. Preserve its calendar date.
             return LocalDateTime.parse(value, DateTimeFormatter.ofPattern("M/d/yy, h:mm a", Locale.US))
-                .toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC).toString();
+                .toLocalDate().toString();
         } catch (Exception ignored) { return ""; }
     }
 
@@ -104,7 +109,13 @@ public class NewswireClient {
         if (response.statusCode() != 200 || response.bodyAsBytes().length > 4 * 1024 * 1024)
             throw new IOException("Newswire API response unavailable or oversized");
         JsonNode result = json.readTree(response.body());
-        if (result.has("errors") || !result.path("data").isObject()) throw new IOException("Newswire API query failed");
+        return responseData(result);
+    }
+
+    static JsonNode responseData(JsonNode result) throws IOException {
+        JsonNode errors = result.path("errors");
+        boolean failed = !errors.isMissingNode() && !errors.isNull() && !(errors.isArray() && errors.isEmpty());
+        if (failed || !result.path("data").isObject()) throw new IOException("Newswire API query failed");
         return result.path("data");
     }
 }

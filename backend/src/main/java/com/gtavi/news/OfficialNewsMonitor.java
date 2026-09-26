@@ -61,7 +61,7 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
                         if(!url.contains("/newswire/article/")) throw fetchFailure;
                         page=newswire.hydrate(OfficialPage.parse(url,""));
                     }
-                    if(url.contains("/newswire/article/") && !page.complete()) {
+                    if(url.contains("/newswire/article/") && (!page.complete() || NewswireClient.publicationDate(page.publishedAt()).isBlank())) {
                         try { page=newswire.hydrate(page); }
                         catch(Exception e) { Log.warnf("Full article unavailable; retaining metadata for %s",url); }
                     }
@@ -104,7 +104,7 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
         } finally { repository.release(sourceCode(),lease); }
     }
 
-    private ObjectNode extract(OfficialPage page,String id,ExtractionBudget budget) {
+    ObjectNode extract(OfficialPage page,String id,ExtractionBudget budget) {
         String hash=OfficialPage.fingerprint(NewsAnalyzer.VERSION+"\n"+page.content()+"\n"+page.structured()+"\n"+page.links());
         JsonNode cached=repository.read("cache:"+id);
         ObjectNode prior=cached!=null && hash.equals(cached.path("hash").asText())
@@ -113,8 +113,10 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
             ? prior : analyzer.analyze(page,budget,prior);
         article.put("id",id).put("observationHash",hash);
         JsonNode listing=repository.read("listing:"+id);
-        if(article.path("publishedAt").asText().isBlank() && listing!=null)
-            article.put("publishedAt",listing.path("publishedAt").asText());
+        String published = NewswireClient.publicationDate(page.publishedAt());
+        if (published.isBlank() && listing != null) published = NewswireClient.publicationDate(listing.path("publishedAt").asText());
+        // Verified metadata can arrive after the content was cached as complete.
+        if (!published.isBlank()) article.put("publishedAt", published);
         var cache=json.createObjectNode().put("hash",hash);
         cache.set("article",article);
         repository.cache("cache:"+id,cache);

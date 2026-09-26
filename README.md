@@ -316,3 +316,7 @@ All six extractors share explicit evidence and unknown-value rules. Prompts matc
 ### Album cards and news browsing
 
 Music formats from the official Album announcement are reconciled into one card, including older short-label records. Official news appears newest first in a swipeable, keyboard-accessible card reader, and the section navigation follows scrolling and asynchronous layout changes. See [catalog, news and navigation notes](docs/2026-09-26-catalog-news-navigation.md) for regression coverage and deployment details.
+
+### Newswire date recovery
+
+Newswire responses with `errors: null` or `errors: []` are accepted. Verified dates enrich existing articles and cached extractions automatically; dated announcements lead the feed, with explicitly related undated landing pages reconciled out of the news view. See [date recovery and validation](docs/2026-09-26-newswire-date-recovery.md).

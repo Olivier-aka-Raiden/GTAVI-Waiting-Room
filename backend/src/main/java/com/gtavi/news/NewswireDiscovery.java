@@ -37,6 +37,7 @@ public class NewswireDiscovery {
             repository.discover(url);
             var metadata = json.createObjectNode().put("publishedAt", NewswireClient.publicationDate(post.path("created").asText()));
             repository.write("listing:" + OfficialPage.identity(url), metadata);
+            repository.recoverPublicationDate(url, metadata.path("publishedAt").asText());
             count++;
         }
         return count;
