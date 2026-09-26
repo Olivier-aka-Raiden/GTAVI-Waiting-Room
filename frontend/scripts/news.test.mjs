@@ -79,3 +79,32 @@ test('regional offers retain both prices and variant labels', () => {
   }}));
   for (const text of ['374.99', '399.99', 'CHF', 'USD', 'Switzerland', 'United States', 'red', 'blue']) assert.ok(html.includes(text), text);
 });
+const editionSource = readFileSync(new URL('../src/features/editions/EditionOffers.tsx', import.meta.url), 'utf8');
+let editionCode = ts.transpileModule(editionSource, { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+editionCode = editionCode.replaceAll('"react/jsx-runtime"', JSON.stringify(pathToFileURL(require.resolve('react/jsx-runtime')).href));
+const { EditionOffers } = await import('data:text/javascript;base64,' + Buffer.from(editionCode).toString('base64'));
+test('real retailer variants share one expandable retailer/platform group', () => {
+  const offers = [1,2,3].map(id => ({
+    id: String(id), retailerCode: 'WOG', retailerName: 'WOG.ch', platform: 'PS5',
+    price: 72.9, currency: 'CHF', availabilityStatus: 'PREORDER_AVAILABLE', preorderAvailable: true,
+    url: 'https://www.wog.ch/fr/index.cfm/details/product/' + id + '-Grand-Theft-Auto-6',
+  }));
+  const html = renderToStaticMarkup(React.createElement(EditionOffers, { offers }));
+  assert.equal((html.match(/<summary/g) ?? []).length, 1);
+  assert.ok(html.includes('3 product options'));
+  assert.equal((html.match(/<a /g) ?? []).length, 3);
+});
+test('album formats retain limited-edition and purchase labels on one card', () => {
+  const html = renderToStaticMarkup(React.createElement(ProductCard, { item: {
+    id: 'album', name: 'Grand Theft Auto VI: The Album', category: 'ALBUM',
+    sourceUrl: 'https://www.rockstargames.com/VI/music',
+    offers: [
+      { id: 'vinyl', variant: 'Vinyl', purchaseUrl: 'https://gtavithealbum.lnk.to/vinyl' },
+      { id: 'limited', variant: 'Limited vinyl', limited: true, purchaseUrl: 'https://gtavithealbum.lnk.to/limitededitionvinyl' },
+    ],
+  } }));
+  assert.equal((html.match(/<article/g) ?? []).length, 1);
+  assert.ok(html.includes('Limited edition'));
+  assert.ok(html.includes('limitededitionvinyl'));
+  assert.ok(html.includes('Price not announced'));
+});

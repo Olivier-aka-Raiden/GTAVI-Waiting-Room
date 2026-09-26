@@ -6,7 +6,7 @@ export type NewsItem = {
 };
 export type Offer = {
   id: string; purchaseUrl: string; price?: number; currency?: string;
-  market?: string; variant?: string; availability?: string; verifiedAt?: string;
+  market?: string; variant?: string; availability?: string; verifiedAt?: string; limited?: boolean;
 };
 export type Collectible = {
   id: string; name: string; description?: string; imageUrl?: string; purchaseUrl?: string;
@@ -65,6 +65,7 @@ export function ProductCard({ item }: { item: Collectible }) {
         <div>
           <p className="text-accent-gold font-semibold">{priceLabel(offer.price, offer.currency)}</p>
           {(offer.market || offer.variant) && <p className="text-xs text-text-muted">{[offer.market, offer.variant].filter(Boolean).join(' · ')}</p>}
+          {offer.limited && <p className="text-accent-gold text-xs">Limited edition</p>}
           {offer.availability === 'OUT_OF_STOCK' && <p className="text-accent-orange text-xs">Out of stock</p>}
         </div>
         <PurchaseLink url={offer.purchaseUrl} availability={offer.availability} />

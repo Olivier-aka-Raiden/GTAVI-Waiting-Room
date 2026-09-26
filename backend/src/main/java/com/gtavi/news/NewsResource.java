@@ -10,6 +10,7 @@ import java.util.Map;
 @Produces(MediaType.APPLICATION_JSON)
 public class NewsResource {
     @Inject NewsRepository repository;
+    @Inject ProductCatalog catalog;
     @GET
     public Map<String,Object> news(@QueryParam("page") @DefaultValue("0") int page,
                                   @QueryParam("size") @DefaultValue("20") int size) {
@@ -25,7 +26,7 @@ public class NewsResource {
     @GET @Path("/products")
     public Map<String,Object> products(@QueryParam("page") @DefaultValue("0") int page,
                                       @QueryParam("size") @DefaultValue("20") int size) {
-        return Map.of("items",repository.list("products",page,size),"total",repository.count("products"));
+        return catalog.page(page, size);
     }
     @GET @Path("/status")
     public JsonNode status(){return repository.read("status");}

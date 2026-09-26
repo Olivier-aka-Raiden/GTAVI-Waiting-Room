@@ -68,7 +68,7 @@ public class RetailerProductValidator {
             }
 
             String url = normalizeUrl(sourceUrl, text(candidate, "url"));
-            if (url == null) {
+            if (url == null || !OfferIdentity.listing(sourceCode, url)) {
                 Log.warnf("Rejected retailer candidate with invalid URL from %s: %s", sourceCode, name);
                 continue;
             }
@@ -108,6 +108,14 @@ public class RetailerProductValidator {
             accepted.add(product);
         }
 
+        var unique = new java.util.LinkedHashMap<String, JsonNode>();
+        for (JsonNode product : accepted) {
+            String key = product.path("canonicalKey").asText() + "|" + product.path("currency").asText("") + "|" + product.path("market").asText("");
+            JsonNode old = unique.get(key);
+            if (old == null || product.hasNonNull("price") || !old.hasNonNull("price")) unique.put(key, product);
+        }
+        accepted.removeAll();
+        unique.values().forEach(accepted::add);
         validated.set("products", accepted);
         return validated;
     }
@@ -197,7 +205,7 @@ public class RetailerProductValidator {
                 || !(scheme.equalsIgnoreCase("https") || scheme.equalsIgnoreCase("http"))) {
                 return null;
             }
-            return resolved.toString();
+            return OfferIdentity.url(resolved.toString());
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -208,8 +216,7 @@ public class RetailerProductValidator {
         String platform = text(product, "platform");
         try {
             URI uri = URI.create(url);
-            String productPath = (uri.getHost() + uri.getPath()).toLowerCase(Locale.ROOT)
-                .replaceAll("/+$", "");
+            String productPath = OfferIdentity.url(uri.toString());
             return edition + "|" + platform + "|" + productPath;
         } catch (IllegalArgumentException e) {
             return edition + "|" + platform + "|" + normalizeTitle(text(product, "name"));

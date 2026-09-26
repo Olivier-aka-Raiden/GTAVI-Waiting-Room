@@ -181,5 +181,19 @@ class RedisPersistenceTest extends RedisBackedTest {
         event.setNotificationEligible(false);
         return event;
     }
+
+    @Test
+    void partialPriceExtractionKeepsLastObservedPriceOnlyWithinSameCurrency() {
+        String id = "price-preservation";
+        persistence.upsertOffer(id, "ed-standard", "WOG", "PS5", "CH",
+            new java.math.BigDecimal("72.90"), "CHF",
+            "https://www.wog.ch/fr/index.cfm/details/product/253144-Grand-Theft-Auto-6", "PREORDER_AVAILABLE", true);
+        persistence.upsertOffer(id, "ed-standard", "WOG", "PS5", "CH",
+            null, "CHF", "https://www.wog.ch/fr/index.cfm/details/product/253144-Grand-Theft-Auto-6", "UNKNOWN", false);
+        assertEquals(0, new java.math.BigDecimal("72.90").compareTo(persistence.getOffers("ed-standard").getFirst().getPrice()));
+        persistence.upsertOffer(id, "ed-standard", "WOG", "PS5", "CH",
+            null, "EUR", "https://www.wog.ch/fr/index.cfm/details/product/253144-Grand-Theft-Auto-6", "UNKNOWN", false);
+        assertNull(persistence.getOffers("ed-standard").getFirst().getPrice());
+    }
 }
 

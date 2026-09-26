@@ -230,9 +230,18 @@ public class MonitoringOrchestrator {
             String currency = product.hasNonNull("currency")
                 ? product.get("currency").asText() : null;
             if (currency==null) price=null;
+            if (price == null && currency != null) {
+                final String offerCurrency = currency;
+                final String offerPlatform = platform;
+                price = persistence.getOffers(editionId).stream()
+                    .filter(old -> java.util.Objects.equals(offerCurrency, old.getCurrency())
+                        && java.util.Objects.equals(offerPlatform, old.getPlatform())
+                        && OfferIdentity.url(url).equals(OfferIdentity.url(old.getUrl())))
+                    .map(com.gtavi.domain.RetailOffer::getPrice).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+            }
             String legacyId = sourceCode + ":" + editionId + ":" + (platform != null ? platform : "UNKNOWN");
             String offerId = legacyId + ":" + com.gtavi.news.OfficialPage.fingerprint(
-                (url==null?"":url)+"|"+(currency==null?"":currency)+"|"+product.path("market").asText(""));
+                OfferIdentity.url(url)+"|"+(currency==null?"":currency)+"|"+product.path("market").asText(""));
             persistence.deactivateOffer(legacyId);
             seenOfferIds.add(offerId);
 

@@ -28,11 +28,11 @@ export function NewsSection() {
         read<{items: Collectible[]; total: number}>('/news/products?page=' + (append ? Math.floor(loaded.current.products / 20) : 0)),
       ]);
       const unique = <T extends {id: string},>(values: T[]) => [...new Map(values.map(x => [x.id, x])).values()];
-      setNews(old => unique(append ? [...old, ...articles.items] : [...articles.items, ...old.filter(item => !articles.items.some(fresh => fresh.id === item.id))]));
-      setProducts(old => unique(append ? [...old, ...items.items] : [...items.items, ...old.filter(item => !items.items.some(fresh => fresh.id === item.id))]));
+      setNews(old => unique(append ? [...old, ...articles.items] : articles.items));
+      setProducts(old => unique(append ? [...old, ...items.items] : items.items));
       loaded.current = {
-        news: Math.min(articles.total, append ? loaded.current.news + articles.items.length : Math.max(loaded.current.news, articles.items.length)),
-        products: Math.min(items.total, append ? loaded.current.products + items.items.length : Math.max(loaded.current.products, items.items.length)),
+        news: Math.min(articles.total, append ? loaded.current.news + articles.items.length : articles.items.length),
+        products: Math.min(items.total, append ? loaded.current.products + items.items.length : items.items.length),
       };
       if (selectedId && /^[a-f0-9]{24}$/.test(selectedId)) setSelected(await read<NewsItem>("/news/" + selectedId));
       setTotal(articles.total); setProductTotal(items.total);
@@ -60,7 +60,7 @@ export function NewsSection() {
     if (selected) document.getElementById('news-' + selected.id)?.scrollIntoView({ block: 'center' });
   }, [selected]);
   const music = products.filter(p => ['MUSIC', 'ALBUM', 'VINYL', 'CD'].includes(p.category));
-  const collectibles = products.filter(p => p.limited === true || !['MUSIC', 'ALBUM', 'VINYL', 'CD', 'GAME'].includes(p.category));
+  const collectibles = products.filter(p => !['MUSIC', 'ALBUM', 'VINYL', 'CD', 'GAME'].includes(p.category));
   return <div className="space-y-6">
     {error && <p role="alert" className="text-accent-orange">{error} <button className="underline min-h-11" onClick={() => void load()}>Retry</button></p>}
     <section id="section-collectibles" className="space-y-4 scroll-mt-32">

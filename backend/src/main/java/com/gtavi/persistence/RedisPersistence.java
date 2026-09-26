@@ -295,6 +295,7 @@ public class RedisPersistence {
             if (node == null || !node.path("active").asBoolean(true)) continue;
             offers.add(convert(node, RetailOffer.class));
         }
+        offers = com.gtavi.monitoring.core.OfferIdentity.distinct(offers);
         offers.sort(Comparator
             .comparing(RetailOffer::getRetailerCode, Comparator.nullsLast(String::compareTo))
             .thenComparing(RetailOffer::getPlatform, Comparator.nullsLast(String::compareTo)));
@@ -310,8 +311,11 @@ public class RedisPersistence {
             String previousJson = values.get(key);
             JsonNode previous = parseNode(key, previousJson);
             OffsetDateTime now = OffsetDateTime.now();
+            BigDecimal observedPrice = price;
+            if (observedPrice == null && previous != null && sameText(previous, "currency", currency)
+                    && previous.path("price").isNumber()) observedPrice = previous.path("price").decimalValue();
             boolean changed = previous == null
-                || !sameText(previous, "price", price == null ? null : price.toPlainString())
+                || !sameText(previous, "price", observedPrice == null ? null : observedPrice.toPlainString())
                 || !sameText(previous, "currency", currency)
                 || !sameText(previous, "url", url)
                 || !sameText(previous, "availabilityStatus", availabilityStatus);
@@ -323,7 +327,7 @@ public class RedisPersistence {
             offer.put("retailerCode", retailerCode);
             putNullable(offer, "platform", platform);
             putNullable(offer, "countryCode", countryCode);
-            if (price == null) offer.putNull("price"); else offer.put("price", price);
+            if (observedPrice != null) offer.put("price", observedPrice); else offer.putNull("price");
             putNullable(offer, "currency", currency);
             putNullable(offer, "url", url);
             putNullable(offer, "availabilityStatus", availabilityStatus);
@@ -364,6 +368,10 @@ public class RedisPersistence {
             JsonNode current = readNode(entityKey("offer", id));
             if (current == null || !current.isObject()) continue;
             ObjectNode offer = ((ObjectNode) current).deepCopy();
+            if (!com.gtavi.monitoring.core.OfferIdentity.listing(retailerCode, offer.path("url").asText())) {
+                deactivateOffer(id);
+                continue;
+            }
             int missedChecks = offer.path("missedChecks").asInt(0) + 1;
             offer.put("missedChecks", missedChecks);
             if (missedChecks >= 2) offer.put("active", false);

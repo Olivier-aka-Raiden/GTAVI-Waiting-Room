@@ -32,7 +32,7 @@ public class RockstarStoreMonitor implements GameSourceMonitor {
         try {
             String html = fetcher.fetch(URL);
             // Extract visible content from Next.js SPA — raw HTML is just script tags
-            String content = SpaContentExtractor.extractContent(html);
+            String content = html; // Preserve links, platform labels and structured data for ExtractionInput.
             // Use editions extractor — this page is an edition comparison, not a retailer listing
             var extraction = aiExtraction.extractFromHtml(content, "rockstar_editions");
             if (extraction.state() != ExtractionResult.State.COMPLETE) return extraction.toMonitorResult(CODE, URL);
@@ -69,7 +69,9 @@ public class RockstarStoreMonitor implements GameSourceMonitor {
             boolean preorder = edition.has("preorderAvailable") && edition.get("preorderAvailable").asBoolean();
 
             // Create a product entry for each platform Rockstar links to
-            for (JsonNode platformNode : edition.path("platforms")) {
+            var platforms = edition.path("platforms").isArray() && !edition.path("platforms").isEmpty()
+                ? edition.path("platforms") : mapper.createArrayNode().add("UNKNOWN");
+            for (JsonNode platformNode : platforms) {
                 String platform=platformNode.asText();
                 var product = mapper.createObjectNode();
                 product.put("name", name != null ? name : type);

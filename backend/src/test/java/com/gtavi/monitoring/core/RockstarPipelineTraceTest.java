@@ -29,6 +29,7 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
     @Inject MonitoringOrchestrator orchestrator;
     @Inject RedisPersistence persistence;
 
+    private JsonNode editions;
     private boolean fetchFails;
     private int fetchCalls;
     private int extractionCalls;
@@ -36,7 +37,7 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
     @BeforeEach
     void replaceRemoteBoundaries() throws Exception {
         String html = fixture("rockstar-editions-rsc.html");
-        JsonNode editions = mapper.readTree(fixture("rockstar-editions-response.json"));
+        editions = mapper.readTree(fixture("rockstar-editions-response.json"));
         QuarkusMock.installMockForType(new HttpFetcher() {
             @Override
             public String fetch(String url) throws IOException {
@@ -52,7 +53,7 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
                 extractionCalls++;
                 assertEquals("rockstar_editions", sourceType);
                 assertTrue(content.contains("Ultimate Edition"));
-                assertFalse(content.contains("<script"), "The real monitor must extract the SPA content");
+                assertTrue(content.contains("<script"), "The extraction service must receive all original SPA evidence");
                 return ExtractionResult.complete(editions.deepCopy(), content.length());
             }
         }, AiExtractionService.class);
@@ -136,6 +137,21 @@ class RockstarPipelineTraceTest extends RedisBackedTest {
         try (var stream = getClass().getResourceAsStream("/fixtures/" + name)) {
             assertNotNull(stream, "Missing fixture: " + name);
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    @Test
+    void missingPlatformDetailsKeepAGeneralRockstarLink() {
+        for (JsonNode item : editions.path("editions"))
+            ((com.fasterxml.jackson.databind.node.ObjectNode)item).putArray("platforms");
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        assertEquals(1, orchestrator.runCheck(Set.of(SOURCE)).successfulSources());
+        for (String editionId : java.util.List.of("ed-standard", "ed-ultimate")) {
+            var offers = persistence.getOffers(editionId);
+            assertEquals(1, offers.size());
+            assertEquals("UNKNOWN", offers.getFirst().getPlatform());
+            assertEquals(URL, offers.getFirst().getUrl());
+            assertNull(offers.getFirst().getPrice());
         }
     }
 }

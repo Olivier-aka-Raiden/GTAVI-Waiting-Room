@@ -1,0 +1,252 @@
+[
+  {
+    "id": "ed-standard",
+    "name": "Standard Edition",
+    "normalizedType": "STANDARD",
+    "official": true,
+    "status": "PREORDER_AVAILABLE",
+    "description": "Get the standard edition of Grand Theft Auto VI along with pre-order bonuses.",
+    "imageUrl": null,
+    "offers": [
+      {
+        "id": "AMAZON_FR:ed-standard:PS5",
+        "retailerCode": "AMAZON_FR",
+        "retailerName": "Amazon.fr",
+        "platform": "PS5",
+        "price": null,
+        "currency": "EUR",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.amazon.fr/-/en/Grand-Theft-Auto-VI-PlayStation/dp/B0GZHLKPGL",
+        "lastSuccessfulCheckAt": "2026-09-26T07:00:27.193646687Z"
+      },
+      {
+        "id": "AMAZON_FR:ed-standard:XSX",
+        "retailerCode": "AMAZON_FR",
+        "retailerName": "Amazon.fr",
+        "platform": "XSX",
+        "price": null,
+        "currency": "EUR",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.amazon.fr/-/en/Grand-Theft-Auto-VI-Xbox/dp/B0GZW3NP7R",
+        "lastSuccessfulCheckAt": "2026-09-26T07:00:27.371318554Z"
+      },
+      {
+        "id": "WOG:ed-standard:PS5:d042b4ba492549f95b2f555d",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "PS5",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/182485-Grand-Theft-Auto-6-Code-in-a-Box",
+        "lastSuccessfulCheckAt": "2026-09-26T07:35:45.827803839Z"
+      },
+      {
+        "id": "WOG:ed-standard:PS5:e17ec8cdc4944b2f0e79594b",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "PS5",
+        "price": null,
+        "currency": "CHF",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/182485%2DGrand%2DTheft%2DAuto%2D6%2DCode%2Din%2Da%2DBox",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:37.065342064Z"
+      },
+      {
+        "id": "WOG:ed-standard:PS5:5f2e52a222e1891d2217cd45",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "PS5",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/253144-Grand-Theft-Auto-6",
+        "lastSuccessfulCheckAt": "2026-09-26T07:35:46.111911136Z"
+      },
+      {
+        "id": "WOG:ed-standard:PS5:5a7aa8b72d36ac81f031b438",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "PS5",
+        "price": null,
+        "currency": "CHF",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/252821%2DGrand%2DTheft%2DAuto%2D6%2DFR%2DCode%2Din%2Da%2DBox",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:37.202215921Z"
+      },
+      {
+        "id": "WOG:ed-standard:PS5:77dbf4d85cbe91f03768e4cc",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "PS5",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/search/searchTerm/GTA%206/orderBy/relevance",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:36.929470575Z"
+      },
+      {
+        "id": "WOG:ed-standard:PS5:82e10a740499bc165c1f07b8",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "PS5",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/252821-Grand-Theft-Auto-6-FR-Code-in-a-Box",
+        "lastSuccessfulCheckAt": "2026-09-26T07:35:45.971546702Z"
+      },
+      {
+        "id": "WOG:ed-standard:PS5:a68689ae404ef6a9072317ac",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "PS5",
+        "price": null,
+        "currency": "CHF",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/253144%2DGrand%2DTheft%2DAuto%2D6",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:37.340330425Z"
+      },
+      {
+        "id": "WOG:ed-standard:UNKNOWN:77dbf4d85cbe91f03768e4cc",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "UNKNOWN",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/search/searchTerm/GTA%206/orderBy/relevance",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:36.854851705Z"
+      },
+      {
+        "id": "WOG:ed-standard:XSX:60a331dae6be1becb289c346",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "XSX",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/182486-Grand-Theft-Auto-6-Code-in-a-Box",
+        "lastSuccessfulCheckAt": "2026-09-26T07:35:45.901905435Z"
+      },
+      {
+        "id": "WOG:ed-standard:XSX:dc9083c56be37a125b18999e",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "XSX",
+        "price": null,
+        "currency": "CHF",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/252822%2DGrand%2DTheft%2DAuto%2D6%2DFR%2DCode%2Din%2Da%2DBox",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:37.270085548Z"
+      },
+      {
+        "id": "WOG:ed-standard:XSX:77dbf4d85cbe91f03768e4cc",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "XSX",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/search/searchTerm/GTA%206/orderBy/relevance",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:36.997501917Z"
+      },
+      {
+        "id": "WOG:ed-standard:XSX:a1261a367dc5f56487dad0ce",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "XSX",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/253145-Grand-Theft-Auto-6",
+        "lastSuccessfulCheckAt": "2026-09-26T07:35:46.181364752Z"
+      },
+      {
+        "id": "WOG:ed-standard:XSX:91da6c2be9589b9a7f23bbdf",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "XSX",
+        "price": null,
+        "currency": "CHF",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/182486%2DGrand%2DTheft%2DAuto%2D6%2DCode%2Din%2Da%2DBox",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:37.134510651Z"
+      },
+      {
+        "id": "WOG:ed-standard:XSX:ac03d830768100b6313d49ec",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "XSX",
+        "price": 72.9,
+        "currency": "CHF",
+        "availabilityStatus": "PREORDER_AVAILABLE",
+        "preorderAvailable": true,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/252822-Grand-Theft-Auto-6-FR-Code-in-a-Box",
+        "lastSuccessfulCheckAt": "2026-09-26T07:35:46.042866131Z"
+      },
+      {
+        "id": "WOG:ed-standard:XSX:cdb4d2f2380c564a4a7c0eea",
+        "retailerCode": "WOG",
+        "retailerName": "WOG.ch",
+        "platform": "XSX",
+        "price": null,
+        "currency": "CHF",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.wog.ch/fr/index.cfm/details/product/253145%2DGrand%2DTheft%2DAuto%2D6",
+        "lastSuccessfulCheckAt": "2026-09-26T08:21:37.409166853Z"
+      }
+    ]
+  },
+  {
+    "id": "ed-ultimate",
+    "name": "Ultimate Edition",
+    "normalizedType": "ULTIMATE",
+    "official": true,
+    "status": "PREORDER_AVAILABLE",
+    "description": "An exclusive collection of items threaded across all aspects of Jason and Lucia’s story.",
+    "imageUrl": null,
+    "offers": [
+      {
+        "id": "AMAZON_FR:ed-ultimate:PS5",
+        "retailerCode": "AMAZON_FR",
+        "retailerName": "Amazon.fr",
+        "platform": "PS5",
+        "price": null,
+        "currency": "EUR",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.amazon.fr/-/en/Grand-Theft-cr%C3%A9dit-PlayStation-Store/dp/B0H88BT8JK/",
+        "lastSuccessfulCheckAt": "2026-09-25T19:00:51.792104017Z"
+      },
+      {
+        "id": "AMAZON_FR:ed-ultimate:XSX",
+        "retailerCode": "AMAZON_FR",
+        "retailerName": "Amazon.fr",
+        "platform": "XSX",
+        "price": null,
+        "currency": "EUR",
+        "availabilityStatus": "UNAVAILABLE",
+        "preorderAvailable": false,
+        "url": "https://www.amazon.fr/-/en/Grand-Theft-Auto-Microsoft-Store/dp/B0H88HWYLP",
+        "lastSuccessfulCheckAt": "2026-09-26T07:00:27.295468428Z"
+      }
+    ]
+  }
+]

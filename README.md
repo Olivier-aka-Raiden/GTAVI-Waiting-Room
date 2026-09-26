@@ -296,3 +296,7 @@ See the [extraction reliability correction](docs/2026-09-26-extraction-reliabili
 Application JSON types and nested announcement records are registered centrally in QuarkusFixNativeBuild. Regression checks cover nested DTO registration and notification JSON round trips. Asset URLs remain card evidence but are excluded from page crawling; existing invalid queue entries are retired automatically in bounded batches. The news status includes skipped/skippedPages diagnostics without additional user notifications.
 
 See the [crawler and native-readiness audit](docs/2026-09-26-crawler-native-readiness.md), including the native executable verification limitation and rollout guidance.
+
+### Product and offer identity
+
+Retailer URLs use stable identities so encoded URL variants cannot create duplicate offers. Missing prices preserve the last observed value in the same currency. The Album has one card with separate format choices; genuine retailer variants remain available in expandable groups. Existing records are reconciled automatically in public responses, with original source evidence retained. See the [duplicate-offer incident and rollout](docs/2026-09-26-duplicate-offers-fix.md).

@@ -1,0 +1,217 @@
+{
+  "total": 12,
+  "items": [
+    {
+      "articleId": "da410bd01db60f0afba4a8bd",
+      "availability": "ANNOUNCED",
+      "category": "VINYL",
+      "description": "Listen to six singles from the upcoming 34-track official soundtrack album, now available for pre-save and pre-order.",
+      "id": "3119f2f75db981763ee5fab2",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "name": "Grand Theft Auto VI: The Album — New Vinyl Various Artists",
+      "offers": [
+        {
+          "availability": "ANNOUNCED",
+          "currency": "",
+          "id": "c8fbb3125895df5294ef8ebb",
+          "market": "",
+          "purchaseUrl": "https://gtavithealbum.lnk.to/vinyl",
+          "variant": "",
+          "verifiedAt": "2026-09-26T08:27:13.600263373Z"
+        }
+      ],
+      "purchaseUrl": "https://gtavithealbum.lnk.to/vinyl",
+      "sourceUrl": "https://www.rockstargames.com/VI/music",
+      "updatedAt": "2026-09-26T08:27:13.565919087Z"
+    },
+    {
+      "articleId": "da410bd01db60f0afba4a8bd",
+      "availability": "ANNOUNCED",
+      "category": "VINYL",
+      "description": "Listen to six singles from the upcoming 34-track official soundtrack album, now available for pre-save and pre-order.",
+      "id": "ab8c83d52c2f9b2ef1dd7c72",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "limited": true,
+      "name": "Grand Theft Auto VI: The Album — New Limited Edition Vinyl Various Artists",
+      "offers": [
+        {
+          "availability": "ANNOUNCED",
+          "currency": "",
+          "id": "803c9fd19e9aa71ef5e29a40",
+          "market": "",
+          "purchaseUrl": "https://gtavithealbum.lnk.to/limitededitionvinyl",
+          "variant": "",
+          "verifiedAt": "2026-09-26T08:27:13.588897487Z"
+        }
+      ],
+      "purchaseUrl": "https://gtavithealbum.lnk.to/limitededitionvinyl",
+      "sourceUrl": "https://www.rockstargames.com/VI/music",
+      "updatedAt": "2026-09-26T08:27:13.565919087Z"
+    },
+    {
+      "articleId": "da410bd01db60f0afba4a8bd",
+      "availability": "PREORDER",
+      "category": "ALBUM",
+      "description": "Listen to six singles from the upcoming 34-track official soundtrack album, now available for pre-save and pre-order.",
+      "id": "222af802188930fbf17ce6a1",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "name": "Grand Theft Auto VI: The Album — Pre-Order Vinyl or CD",
+      "offers": [
+        {
+          "availability": "PREORDER",
+          "currency": "",
+          "id": "7044225137ecc0616c981228",
+          "market": "",
+          "purchaseUrl": "https://gtavithealbum.lnk.to/store",
+          "variant": "",
+          "verifiedAt": "2026-09-26T08:27:13.577432696Z"
+        }
+      ],
+      "purchaseUrl": "https://gtavithealbum.lnk.to/store",
+      "sourceUrl": "https://www.rockstargames.com/VI/music",
+      "updatedAt": "2026-09-26T08:27:13.565919087Z"
+    },
+    {
+      "articleId": "421d9b71cfe8c2562a7373d5",
+      "availability": "ANNOUNCED",
+      "category": "GAME",
+      "description": "Vice City, USA. Jason and Lucia have always known the deck is stacked against them. But when an easy score goes wrong, they find themselves on the darkest side of the sunniest place in America, in the middle of a criminal conspiracy stretching across the state of Leonida — forced to rely on each other more than ever if they want to make it out alive.",
+      "evidence": "Only open for business with the Ultimate Edition.",
+      "id": "5470d39de9a2621f8d75a51c",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "name": "Ultimate Edition",
+      "offers": [],
+      "sourceUrl": "https://www.rockstargames.com/VI/only-in-leonida",
+      "updatedAt": "2026-09-26T08:26:57.407318060Z"
+    },
+    {
+      "articleId": "421d9b71cfe8c2562a7373d5",
+      "availability": "PREORDER",
+      "category": "MERCHANDISE",
+      "description": "Vice City, USA. Jason and Lucia have always known the deck is stacked against them. But when an easy score goes wrong, they find themselves on the darkest side of the sunniest place in America, in the middle of a criminal conspiracy stretching across the state of Leonida — forced to rely on each other more than ever if they want to make it out alive.",
+      "evidence": "Vintage Vice City Pack\nPRE-ORDER BONUS",
+      "id": "dab3a1c8a30ff2d58fdc220d",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "name": "Vintage Vice City Pack",
+      "offers": [],
+      "sourceUrl": "https://www.rockstargames.com/VI/only-in-leonida",
+      "updatedAt": "2026-09-26T08:26:57.407318060Z"
+    },
+    {
+      "articleId": "421d9b71cfe8c2562a7373d5",
+      "availability": "PREORDER",
+      "category": "GAME",
+      "description": "Vice City, USA. Jason and Lucia have always known the deck is stacked against them. But when an easy score goes wrong, they find themselves on the darkest side of the sunniest place in America, in the middle of a criminal conspiracy stretching across the state of Leonida — forced to rely on each other more than ever if they want to make it out alive.",
+      "evidence": "Grand Theft Auto VI",
+      "id": "64d347731e45d573212d4b92",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "name": "Grand Theft Auto VI",
+      "offers": [],
+      "sourceUrl": "https://www.rockstargames.com/VI/only-in-leonida",
+      "updatedAt": "2026-09-26T08:26:57.407318060Z"
+    },
+    {
+      "articleId": "015615505488af50fa727cad",
+      "availability": "PREORDER",
+      "category": "COLLECTIBLE",
+      "currency": "EUR",
+      "description": "A premium Collector’s Box featuring all the essentials for a good time, inspired by Leonida’s hit TV show, Macca the Gator. ",
+      "evidence": "Pre-Order The Goodtime State – Vice City Collection Now While Supplies Last September 24, 2026",
+      "gameIncluded": false,
+      "id": "b7998ca41f0e6ce8cad3e723",
+      "imageUrl": "https://images.ctfassets.net/h1rqp7q66d54/01pDeCZFdRpFBhmzHG7lvZ/ee4e2a1b8ed251ad303266c126636f97/GTAVI_CE_Box_Closed_2160x2160-V02.png",
+      "limited": true,
+      "name": "Grand Theft Auto VI: The Goodtime State – Vice City Collection",
+      "offers": [
+        {
+          "availability": "PREORDER",
+          "currency": "",
+          "id": "ff9de23fe45e23b3343ec46c",
+          "market": "",
+          "purchaseUrl": "https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+          "variant": "",
+          "verifiedAt": "2026-09-26T07:39:57.700143262Z"
+        },
+        {
+          "availability": "PREORDER",
+          "currency": "EUR",
+          "id": "05a9e3adb04e0087dde29ee2",
+          "market": "",
+          "price": 399.99,
+          "purchaseUrl": "https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+          "variant": "",
+          "verifiedAt": "2026-09-26T08:27:18.770105739Z"
+        }
+      ],
+      "price": 399.99,
+      "purchaseUrl": "https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+      "sourceUrl": "https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+      "updatedAt": "2026-09-26T08:27:18.758546665Z"
+    },
+    {
+      "articleId": "015615505488af50fa727cad",
+      "availability": "ANNOUNCED",
+      "category": "MERCHANDISE",
+      "description": "A capsule collection of apparel and accessories inspired by the Goodtime State’s hit TV show character, Macca the Gator.",
+      "evidence": "Goodtime Gear\nA capsule collection of apparel and accessories inspired by the Goodtime State’s hit TV show character, Macca the Gator.",
+      "id": "022e82962498e97713d91ae9",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "name": "Goodtime Gear",
+      "offers": [],
+      "sourceUrl": "https://www.rockstargames.com/VI",
+      "updatedAt": "2026-09-26T07:39:57.655243480Z"
+    },
+    {
+      "articleId": "015615505488af50fa727cad",
+      "availability": "ANNOUNCED",
+      "category": "ALBUM",
+      "description": "Featuring a genre-defying artist roster with 34 original tracks that capture the electric energy of Vice City and Leonida.",
+      "evidence": "GRAND THEFT AUTO VI: THE ALBUM\nFeaturing a genre-defying artist roster with 34 original tracks that capture the electric energy of Vice City and Leonida.\nExplore More",
+      "id": "72682353ae17411b9fced292",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "name": "Grand Theft Auto VI: The Album",
+      "offers": [],
+      "sourceUrl": "https://www.rockstargames.com/VI",
+      "updatedAt": "2026-09-26T07:39:57.655243480Z"
+    },
+    {
+      "articleId": "015615505488af50fa727cad",
+      "availability": "PREORDER",
+      "category": "GAME",
+      "description": "Vice City, USA. Jason and Lucia have always known the deck is stacked against them. But when an easy score goes wrong, they find themselves on the darkest side of the sunniest place in America, in the middle of a criminal conspiracy stretching across the state of Leonida — forced to rely on each other more than ever if they want to make it out alive.",
+      "evidence": "Ultimate Edition\nWelcome to Leonida, the state where anything goes. Seize everything this massive world has to offer with the Grand Theft Auto VI: Ultimate Edition, an exclusive collection of premium vehicles, weapons, apparel, and action around every corner.\nUltimate Edition bonuses are threaded across all aspects of Jason and Lucia’s story, with new items uncovered behind each chapter.",
+      "id": "aaf58e8b7d7612b088b3e630",
+      "imageUrl": "https://www.rockstargames.com/VI/-/opengraph-image.jpg?opengraph-image.0t8ty~nlmxq2s.jpg",
+      "name": "Grand Theft Auto VI: Ultimate Edition",
+      "offers": [],
+      "sourceUrl": "https://www.rockstargames.com/VI",
+      "updatedAt": "2026-09-26T07:39:57.655243480Z"
+    },
+    {
+      "articleId": "bd4ac8a0c7dfe0174346b5df",
+      "availability": "PREORDER",
+      "category": "ALBUM",
+      "description": "Grand Theft Auto VI: The Album, the upcoming official soundtrack album created in partnership with Atlantic Records and launching November 19 alongside Grand Theft Auto VI, is available to pre-save on all major music streaming services, with...",
+      "evidence": "Grand Theft Auto VI: The Album, the upcoming official soundtrack album created in partnership with Atlantic Records and launching November 19 alongside Grand Theft Auto VI, is available to pre-save on all major music streaming services, with...",
+      "id": "00a167d03ee416007cad2dc1",
+      "imageUrl": "https://media-rockstargames-com.akamaized.net/tina-uploads/posts/7599a881942544/50105de3da220dff6dd47fad6865b1912e7466ca.jpg",
+      "name": "Grand Theft Auto VI: The Album",
+      "offers": [],
+      "sourceUrl": "https://www.rockstargames.com/newswire/article/7599a881942544/announcing-grand-theft-auto-vi-the-album-coming-november-19",
+      "updatedAt": "2026-09-26T07:36:58.451796324Z"
+    },
+    {
+      "articleId": "33a659dc6fc6f41c712b1db8",
+      "availability": "PREORDER",
+      "category": "COLLECTIBLE",
+      "description": "Introducing Grand Theft Auto VI: The Goodtime State – Vice City Collection, a premium Grand Theft Auto VI collectible set featuring all the essentials for a good time, inspired by Leonida’s hit TV show, Macca the Gator.",
+      "evidence": "Introducing Grand Theft Auto VI: The Goodtime State – Vice City Collection, a premium Grand Theft Auto VI collectible set featuring all the essentials for a good time, inspired by Leonida’s hit TV show, Macca the Gator.",
+      "id": "454936c4b4002fcd537b08e3",
+      "imageUrl": "https://media-rockstargames-com.akamaized.net/tina-uploads/posts/9k2a49ook82o57/cbdf4fc342bfca94c789a887244c3b70283047ae.jpg",
+      "name": "Grand Theft Auto VI: The Goodtime State – Vice City Collection",
+      "offers": [],
+      "sourceUrl": "https://www.rockstargames.com/newswire/article/9k2a49ook82o57/pre-order-the-goodtime-state-vice-city-collection-now-while-supplies-l",
+      "updatedAt": "2026-09-26T07:36:40.373916038Z"
+    }
+  ]
+}
