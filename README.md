@@ -328,3 +328,7 @@ News alerts key their occurrence on the new fact set instead of a per-observatio
 ### Collection boxes and priced offers
 
 Collectibles are reconciled per item: a collection box is one card, its contents are described by that card instead of becoming individual products, and an unpriced observation of a listing never renders beside its priced offer. Raw observations are retained, so existing records are corrected on read without a migration. The announcement prompt reports an included item separately only when the source gives it its own purchase URL. See [collection boxes, contents and duplicate offers](docs/2026-09-27-collectible-box-grouping.md).
+
+### Album formats
+
+Album formats named in prose ("CD jewel case", "liquid-filled vinyl", "splatter-edition vinyl") are folded into the album card as format choices instead of becoming separate Music cards. The album's own store host family counts as album evidence, format names are recognized by their words, and the release description is pinned to the album record. See [album formats appearing as their own card](docs/2026-09-27-album-format-card-fix.md).

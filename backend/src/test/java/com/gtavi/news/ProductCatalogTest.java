@@ -132,4 +132,42 @@ class ProductCatalogTest {
             json.readTree("{\"id\":\"b\",\"name\":\"Macca the Gator Figure\",\"category\":\"COLLECTIBLE\",\"articleId\":\"announced\",\"offers\":[]}"));
         assertEquals(2, ProductCatalog.group(rows).size());
     }
+
+    @Test void albumExclusivesNamedInProseStayOnTheAlbumCard() throws Exception {
+        // The album article added: "three exclusives only available at gtavi-thealbum.com:
+        // a limited-edition liquid-filled vinyl, a splatter-edition vinyl, and a CD jewel case."
+        var rows = new ArrayList<JsonNode>();
+        rows.add(json.readTree("""
+            {"id":"album","name":"Grand Theft Auto VI: The Album","category":"ALBUM","articleId":"album-news",
+             "sourceUrl":"https://www.rockstargames.com/VI/music","purchaseUrl":"https://gtavithealbum.lnk.to/store",
+             "imageUrl":"https://images.example/album.jpg","updatedAt":"2026-09-27T15:08:02Z",
+             "description":"Listen to six singles from the upcoming 34-track official soundtrack album.",
+             "offers":[{"purchaseUrl":"https://gtavithealbum.lnk.to/store",
+                        "variant":"Grand Theft Auto VI: The Album — Pre-Order Vinyl or CD","availability":"PREORDER"}]}
+            """));
+        for (String format : List.of("CD jewel case", "limited-edition liquid-filled vinyl", "splatter-edition vinyl")) {
+            rows.add(json.createObjectNode().put("id", format).put("name", format).put("category",
+                    format.contains("case") ? "CD" : "VINYL")
+                .put("articleId", "album-news")
+                .put("sourceUrl", "https://www.rockstargames.com/newswire/article/7599a881942544/announcing-grand-theft-auto-vi-the-album-coming-november-19")
+                .put("purchaseUrl", "https://www.gtavi-thealbum.com/")
+                .put("updatedAt", "2026-09-27T15:04:01Z")
+                .put("description", "including three exclusives only available at gtavi-thealbum.com.")
+                .set("offers", json.createArrayNode().add(json.createObjectNode()
+                    .put("purchaseUrl", "https://www.gtavi-thealbum.com")
+                    .put("variant", format).put("availability", "PREORDER"))));
+        }
+
+        var products = ProductCatalog.group(rows);
+
+        assertEquals(1, products.size(), "Album formats are choices, not separate cards");
+        var album = products.getFirst();
+        assertEquals("Grand Theft Auto VI: The Album", album.path("name").asText());
+        assertEquals("ALBUM", album.path("category").asText());
+        assertEquals(4, album.path("offers").size());
+        assertTrue(album.path("offers").toString().contains("CD jewel case"));
+        assertEquals("https://images.example/album.jpg", album.path("imageUrl").asText());
+        assertEquals("Listen to six singles from the upcoming 34-track official soundtrack album.",
+            album.path("description").asText(), "A format entry must not replace the release description");
+    }
 }

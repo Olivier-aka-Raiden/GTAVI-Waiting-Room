@@ -32,6 +32,7 @@ public class ProductCatalog {
             linkedNames.computeIfAbsent(name(item), ignored -> new LinkedHashSet<>()).add(identity(item, album.matches(item)));
         var groups = new LinkedHashMap<String, ObjectNode>();
         var choices = new HashMap<String, LinkedHashMap<String, ObjectNode>>();
+        var albumDescriptions = new HashMap<String, String>();
         // Oldest first means fresh verified details win, while missing details preserve old values.
         var ordered = new ArrayList<>(observations);
         ordered.sort(Comparator.comparing(item -> item.path("updatedAt").asText("")));
@@ -50,6 +51,9 @@ public class ProductCatalog {
             if (album.matches(item)) {
                 merged.put("name", "Grand Theft Auto VI: The Album").put("category", "ALBUM");
                 merged.remove("limited"); // Limited applies to a format, not every copy of the album.
+                // The release text describes the album; a format entry must not replace it.
+                if (AlbumIdentity.isAlbumTitle(item) && !item.path("description").asText("").isBlank())
+                    albumDescriptions.put(key, item.path("description").asText());
             }
             var offers = choices.computeIfAbsent(key, ignored -> new LinkedHashMap<>());
             if (item.path("offers").isArray() && !item.path("offers").isEmpty())
@@ -58,6 +62,10 @@ public class ProductCatalog {
             var array = merged.putArray("offers");
             visibleOffers(offers).forEach(array::add);
         }
+        albumDescriptions.forEach((key, description) -> {
+            ObjectNode card = groups.get(key);
+            if (card != null) card.put("description", description);
+        });
         var result = new ArrayList<>(groups.values());
         result.sort(Comparator.comparing((ObjectNode item) -> item.path("updatedAt").asText("")).reversed());
         return reconcile(result);

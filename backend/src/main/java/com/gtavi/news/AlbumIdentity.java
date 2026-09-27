@@ -6,6 +6,13 @@ import java.util.*;
 
 /** Reconcile short format labels only when evidence connects them to the known album. */
 final class AlbumIdentity {
+    /** Formats are recognized by their own words: "CD jewel case" or "liquid-filled vinyl" included. */
+    private static final Set<String> FORMAT_WORDS = Set.of(
+        "cd", "vinyl", "record", "lp", "2lp", "compact", "disc", "jewel", "case", "cassette");
+    private static final Set<String> FORMAT_QUALIFIERS = Set.of(
+        "new", "limited", "edition", "standard", "deluxe", "exclusive", "collectors", "collector",
+        "colored", "coloured", "color", "colour", "black", "double", "liquid", "filled", "splatter",
+        "splattered", "special", "gatefold", "the", "a", "of", "with", "and");
     private final Set<String> sources = new HashSet<>();
     private final Set<String> articles = new HashSet<>();
 
@@ -18,10 +25,24 @@ final class AlbumIdentity {
     boolean matches(JsonNode item) {
         if (!music(item)) return false;
         if (explicit(item)) return true;
-        String name = normalized(item);
-        boolean format = name.matches("(?:(?:new|limited|edition|standard|deluxe|exclusive|collectors|collector|colored|coloured|black|color|colour|double|2lp|lp) )*(?:cd|vinyl|compact disc|vinyl record)(?: edition)?");
-        return format && (sources.contains(item.path("sourceUrl").asText(""))
+        return formatLabel(normalized(item)) && (sources.contains(item.path("sourceUrl").asText(""))
             || articles.contains(item.path("articleId").asText("")) || musicPage(item.path("sourceUrl").asText("")));
+    }
+    /** The release record itself, as opposed to one of its format entries. */
+    static boolean isAlbumTitle(JsonNode item) {
+        return music(item) && normalized(item).matches("(?:grand theft auto vi|gta vi)? ?the album");
+    }
+    private static boolean formatLabel(String name) {
+        if (name.isBlank()) return false;
+        boolean formatWord = false;
+        for (String word : name.split(" ")) {
+            if (FORMAT_WORDS.contains(word)) {
+                formatWord = true;
+                continue;
+            }
+            if (!FORMAT_QUALIFIERS.contains(word)) return false;
+        }
+        return formatWord;
     }
     private static boolean explicit(JsonNode item) {
         if (!music(item)) return false;
@@ -37,8 +58,11 @@ final class AlbumIdentity {
         return item.path("name").asText("").toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", " ").strip();
     }
     private static boolean albumUrl(String url) {
-        try { return Set.of("gtavithealbum.lnk.to", "gtavi-thealbum.lnk.to").contains(Objects.toString(URI.create(url).getHost(), "").toLowerCase(Locale.ROOT)); }
-        catch (IllegalArgumentException invalid) { return false; }
+        try {
+            String host = Objects.toString(URI.create(url).getHost(), "").toLowerCase(Locale.ROOT);
+            return Set.of("gtavithealbum.lnk.to", "gtavi-thealbum.lnk.to").contains(host)
+                || host.equals("gtavi-thealbum.com") || host.endsWith(".gtavi-thealbum.com");
+        } catch (IllegalArgumentException invalid) { return false; }
     }
     private static boolean musicPage(String url) {
         try {
