@@ -450,6 +450,20 @@ public class RedisPersistence {
         return created;
     }
 
+    /**
+     * Claim a notification identity for a bounded window. Returns true when this call
+     * created the claim, false when an equivalent alert was already sent: the pipeline
+     * still stores the event, but it does not push the same news twice.
+     */
+    public boolean claimNotificationFingerprint(String fingerprint, Duration window) {
+        long seconds = Math.max(1, window.toSeconds());
+        return evalInteger("""
+            if redis.call('SET', KEYS[1], '1', 'NX', 'EX', ARGV[1]) then return 1 end
+            return 0
+            """, List.of(indexKey("notifications", "sent", fingerprint)),
+            List.of(Long.toString(seconds))) == 1;
+    }
+
     // ---- Source definitions and monitoring snapshots ----
 
     public void saveSourceDefinitionIfAbsent(Map<String, Object> source) {

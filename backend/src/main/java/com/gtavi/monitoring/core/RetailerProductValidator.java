@@ -8,6 +8,7 @@ import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 
 import java.net.URI;
+import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.Set;
 
@@ -99,10 +100,9 @@ public class RetailerProductValidator {
             if (currency != null) product.put("currency", currency);
             else product.putNull("currency");
 
-            if (!candidate.has("price") || !candidate.get("price").isNumber()
-                || candidate.get("price").asDouble() <= 0) {
-                product.putNull("price");
-            }
+            BigDecimal observedPrice = positivePrice(candidate.get("price"));
+            if (observedPrice == null) product.putNull("price");
+            else product.put("price", observedPrice);
 
             accepted.add(product);
         }
@@ -244,6 +244,36 @@ public class RetailerProductValidator {
         if (value == null) return fallback;
         String normalized = value.trim().toUpperCase(Locale.ROOT);
         return allowed.contains(normalized) ? normalized : fallback;
+    }
+
+    /**
+     * Accepts the numeric price or a locale-formatted observed value such as
+     * {@code "CHF 72.90"} or {@code "72,90"}. Never infers digits, currency or signs.
+     */
+    static BigDecimal positivePrice(JsonNode value) {
+        if (value == null || value.isNull()) return null;
+        if (value.isNumber()) {
+            BigDecimal number = value.decimalValue();
+            return number.signum() > 0 ? number : null;
+        }
+        String compact = value.asText("").replaceAll("[^0-9.,]", "");
+        if (compact.isBlank()) return null;
+        int separator = Math.max(compact.lastIndexOf('.'), compact.lastIndexOf(','));
+        String digits;
+        if (separator < 0) digits = compact;
+        else {
+            String head = compact.substring(0, separator).replaceAll("[.,]", "");
+            String tail = compact.substring(separator + 1).replaceAll("[.,]", "");
+            // One or two trailing digits are a decimal fraction; three or more are a group.
+            digits = !head.isBlank() && !tail.isBlank() && tail.length() <= 2
+                ? head + "." + tail : head + tail;
+        }
+        try {
+            BigDecimal price = new BigDecimal(digits);
+            return price.signum() > 0 ? price : null;
+        } catch (NumberFormatException invalid) {
+            return null;
+        }
     }
 
     private static String normalizeTitle(String value) {

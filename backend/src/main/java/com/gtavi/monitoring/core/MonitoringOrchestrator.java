@@ -211,9 +211,9 @@ public class MonitoringOrchestrator {
                 ? product.get("edition").asText().toLowerCase() : null;
             String editionId = aiEdition != null ? matchEdition(aiEdition, knownEditionIds) : null;
             if (editionId == null) editionId = matchEdition(productName, knownEditionIds);
-            if (editionId == null) {
-                editionId=projections.ensureRetailEdition(productName,sourceCode);
-            }
+            // Unmatched listings (regional boxes, market variants) belong to the base game.
+            // The official lineup is the only source of separate edition cards.
+            if (editionId == null) editionId=projections.ensureStandardEdition();
 
             String url = product.has("url") ? product.get("url").asText() : null;
             String platform = product.has("platform") ? product.get("platform").asText() : null;
@@ -229,17 +229,25 @@ public class MonitoringOrchestrator {
                 ? null : new BigDecimal(priceText);
             String currency = product.hasNonNull("currency")
                 ? product.get("currency").asText() : null;
-            if (currency==null) price=null;
+            // A price must be quoted in a currency: the source's own code when stated,
+            // otherwise the retailer's market currency.
+            if (price != null && currency == null) currency = currencyFor(sourceCode);
+            // An incomplete observation must not erase a verified price for the same listing.
             if (price == null && currency != null) {
-                final String offerCurrency = currency;
-                final String offerPlatform = platform;
-                price = persistence.getOffers(editionId).stream()
-                    .filter(old -> java.util.Objects.equals(offerCurrency, old.getCurrency())
-                        && java.util.Objects.equals(offerPlatform, old.getPlatform())
-                        && OfferIdentity.url(url).equals(OfferIdentity.url(old.getUrl())))
-                    .map(com.gtavi.domain.RetailOffer::getPrice).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+                price = lastKnownPrice(editionId, platform, url, currency);
+            } else if (price == null) {
+                String market = currencyFor(sourceCode);
+                BigDecimal known = lastKnownPrice(editionId, platform, url, market);
+                if (known != null) {
+                    price = known;
+                    currency = market;
+                }
             }
+            if (currency==null) price=null;
             String legacyId = sourceCode + ":" + editionId + ":" + (platform != null ? platform : "UNKNOWN");
+            // Retire the pre-market-currency record shape once a quoted offer exists.
+            persistence.deactivateOffer(legacyId + ":" + com.gtavi.news.OfficialPage.fingerprint(
+                OfferIdentity.url(url) + "||" + product.path("market").asText("")));
             String offerId = legacyId + ":" + com.gtavi.news.OfficialPage.fingerprint(
                 OfferIdentity.url(url)+"|"+(currency==null?"":currency)+"|"+product.path("market").asText(""));
             persistence.deactivateOffer(legacyId);
@@ -259,11 +267,30 @@ public class MonitoringOrchestrator {
         Log.debugf("Persisted %d offers for retailer %s", seenOfferIds.size(), sourceCode);
     }
 
+    /** Last verified price for the same edition, platform, listing and currency. */
+    private BigDecimal lastKnownPrice(String editionId, String platform, String url, String currency) {
+        return persistence.getOffers(editionId).stream()
+            .filter(old -> java.util.Objects.equals(currency, old.getCurrency())
+                && java.util.Objects.equals(platform, old.getPlatform())
+                && OfferIdentity.url(url).equals(OfferIdentity.url(old.getUrl())))
+            .map(com.gtavi.domain.RetailOffer::getPrice).filter(java.util.Objects::nonNull)
+            .findFirst().orElse(null);
+    }
+
     private String countryFor(String sourceCode) {
         return switch (sourceCode) {
             case "AMAZON_FR" -> "FR";
             case "ROCKSTAR_STORE" -> "US";
             default -> "CH";
+        };
+    }
+
+    /** Market currency of the monitored store, used only to quote an observed price. */
+    private String currencyFor(String sourceCode) {
+        return switch (sourceCode) {
+            case "AMAZON_FR" -> "EUR";
+            case "ROCKSTAR_STORE" -> "USD";
+            default -> "CHF";
         };
     }
 

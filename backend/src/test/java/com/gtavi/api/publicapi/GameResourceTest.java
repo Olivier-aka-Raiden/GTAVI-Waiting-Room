@@ -1,9 +1,14 @@
 package com.gtavi.api.publicapi;
 
 import com.gtavi.config.RedisBackedTest;
+import com.gtavi.domain.Edition;
+import com.gtavi.persistence.RedisPersistence;
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.http.ContentType;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
+
+import java.time.OffsetDateTime;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
@@ -15,6 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @QuarkusTest
 class GameResourceTest extends RedisBackedTest {
+
+    @Inject
+    RedisPersistence persistence;
 
     @Test
     void testGameOverview() {
@@ -115,6 +123,28 @@ class GameResourceTest extends RedisBackedTest {
         // Trailer 2 (2025-05-06) should come before Trailer 1 (2023-12-04)
         String firstTitle = response.jsonPath().getString("[0].title");
         assertTrue(firstTitle.contains("Trailer 2"), "Expected Trailer 2 first, got: " + firstTitle);
+    }
+
+    @Test
+    void retailerStubEditionsWithoutOffersAreNotPublic() {
+        // Historical retailer product names were persisted as editions with no offers.
+        Edition stub = new Edition();
+        stub.setId("edition-stub-" + java.util.UUID.randomUUID());
+        stub.setGameCode("GTA_VI");
+        stub.setName("Grand Theft Auto 6 -FR- (Code in a Box)");
+        stub.setNormalizedType("UNKNOWN");
+        stub.setOfficial(false);
+        stub.setStatus("ANNOUNCED");
+        stub.setCreatedAt(OffsetDateTime.now());
+        stub.setUpdatedAt(OffsetDateTime.now());
+        persistence.saveEdition(stub);
+
+        given()
+            .when().get("/api/v1/games/gta-vi/editions")
+            .then()
+            .statusCode(200)
+            .body("size()", equalTo(2))
+            .body("name", not(hasItem(stub.getName())));
     }
 }
 

@@ -21,6 +21,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @QuarkusTest
@@ -186,8 +188,63 @@ class NotificationServiceTest extends RedisBackedTest {
         assertEquals(0, service.processPendingDeliveries());
     }
 
+    @Test
+    void onePublishedItemNeverPushesTheSameAlertTwiceInADay() {
+        String unique = UUID.randomUUID().toString();
+        String installationId = "outbox-news-" + unique;
+        String token = "token-news-" + unique;
+        register(installationId, token);
+
+        ChangeEvent first = newsEvent(unique, 0);
+        assertEquals(1, service.saveEventAndQueue(first).deliveriesQueued());
+        var delivery = persistence.getNotificationDelivery(first.getId(), installationId);
+        assertNotNull(delivery);
+        assertNotNull(delivery.data().get("publishedAt"),
+            "The alert must carry the verified publication date");
+
+        // The same article re-observed with a new event key: recorded, never pushed again.
+        ChangeEvent duplicate = newsEvent(unique, 6);
+        var queued = service.saveEventAndQueue(duplicate);
+        assertTrue(queued.created(), "The timeline still records the observation");
+        assertEquals(0, queued.deliveriesQueued());
+        assertNull(persistence.getNotificationDelivery(duplicate.getId(), installationId));
+    }
+
+    @Test
+    void anItemPublishedLongAgoIsStoredWithoutAPush() {
+        String unique = UUID.randomUUID().toString();
+        String installationId = "outbox-stale-news-" + unique;
+        register(installationId, "token-stale-news-" + unique);
+
+        ChangeEvent stale = newsEvent(unique, 0);
+        stale.setSourcePublishedAt(OffsetDateTime.now().minusDays(45));
+
+        var queued = service.saveEventAndQueue(stale);
+
+        assertTrue(queued.created());
+        assertEquals(0, queued.deliveriesQueued());
+        assertNull(persistence.getNotificationDelivery(stale.getId(), installationId));
+    }
+
     private void register(String installationId, String token) {
         persistence.registerDevice(installationId, token, "WEB", "en", "1");
+    }
+
+    private ChangeEvent newsEvent(String unique, int detectedMinutesLater) {
+        ChangeEvent event = new ChangeEvent();
+        event.setGameCode("GTA_VI");
+        event.setSourceCode("ROCKSTAR_NEWS");
+        event.setEventType("MAJOR_OFFICIAL_NEWS");
+        event.setPriority("MAJOR");
+        event.setTitle("GTA VI announcement — new details");
+        event.setDescription("An official announcement.");
+        event.setNewValue("article-" + unique);
+        event.setDeduplicationKey("NEWS:" + unique + ":" + detectedMinutesLater);
+        event.setDetectedAt(OffsetDateTime.now().plusMinutes(detectedMinutesLater));
+        event.setSourcePublishedAt(OffsetDateTime.now().minusDays(1));
+        event.setUserVisible(true);
+        event.setNotificationEligible(true);
+        return event;
     }
 
     private ChangeEvent event(String unique) {

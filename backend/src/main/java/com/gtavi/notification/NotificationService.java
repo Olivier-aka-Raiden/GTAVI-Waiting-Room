@@ -45,6 +45,10 @@ public class NotificationService {
     @ConfigProperty(name = "gtavi.notifications.delivery-lease-seconds", defaultValue = "60")
     long deliveryLeaseSeconds;
 
+    /** Items published before this window are stored and displayed but never pushed. */
+    @ConfigProperty(name = "gtavi.notifications.max-source-age-days", defaultValue = "14")
+    long maxSourceAgeDays;
+
     private static final Map<String, String> EVENT_TITLE_TEMPLATES = Map.of(
         "COLLECTOR_EDITION_ANNOUNCED", "\uD83D\uDEA8 GTA VI Collector's Edition announced!",
         "COLLECTOR_EDITION_PREORDER_OPENED", "\uD83D\uDED2 Collector's Edition pre-orders open!",
@@ -58,7 +62,7 @@ public class NotificationService {
         List<NotificationDelivery> deliveries = new ArrayList<>();
         if (event.isNotificationEligible()) {
             String preferenceField = eventTypeToPreferenceField(event.getEventType());
-            if (preferenceField != null) {
+            if (preferenceField != null && pushable(event)) {
                 OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
                 String title = EVENT_TITLE_TEMPLATES.getOrDefault(
                     event.getEventType(), event.getTitle());
@@ -74,6 +78,46 @@ public class NotificationService {
 
         boolean created = persistence.saveEventAndOutboxIfAbsent(event, deliveries);
         return new QueueResult(created, created ? deliveries.size() : 0);
+    }
+
+    /**
+     * A push alert must describe something new. Items whose verified publication date is
+     * older than the alert window are persisted for the timeline but never pushed, and an
+     * equivalent alert for the same item is only pushed once per window.
+     */
+    private boolean pushable(ChangeEvent event) {
+        OffsetDateTime published = event.getSourcePublishedAt();
+        if (published != null && published.isBefore(
+                OffsetDateTime.now(ZoneOffset.UTC).minusDays(Math.max(1, maxSourceAgeDays)))) {
+            Log.infof("Not pushing %s: source publication date %s is older than %d days",
+                event.getEventType(), published, Math.max(1, maxSourceAgeDays));
+            return false;
+        }
+        if (!"ROCKSTAR_NEWS".equals(event.getSourceCode())) return true;
+        String fingerprint = notificationFingerprint(event);
+        boolean claimed = persistence.claimNotificationFingerprint(
+            com.gtavi.news.OfficialPage.fingerprint(fingerprint),
+            Duration.ofDays(Math.max(1, maxSourceAgeDays)));
+        if (!claimed) {
+            Log.infof("Not pushing duplicate %s alert (%s)", event.getEventType(), fingerprint);
+        }
+        return claimed;
+    }
+
+    /**
+     * Identity of the user-visible alert: one item never produces two alerts of the same
+     * type on the same day, even when a re-observation created a new event key. A later
+     * genuine update on another day keeps its own alert.
+     */
+    static String notificationFingerprint(ChangeEvent event) {
+        String date = event.getSourcePublishedAt() == null ? "unknown"
+            : event.getSourcePublishedAt().toLocalDate().toString();
+        String detected = event.getDetectedAt() == null ? "unknown"
+            : event.getDetectedAt().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate().toString();
+        String title = event.getTitle() == null ? ""
+            : event.getTitle().toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+", " ").strip();
+        return "news|" + event.getEventType() + "|" + event.getNewValue() + "|" + title
+            + "|" + date + "|" + detected;
     }
 
     public int processPendingDeliveries() {
@@ -154,6 +198,8 @@ public class NotificationService {
         else data.put("url", "/#section-updates");
         if (event.getEventType() != null) data.put("eventType", event.getEventType());
         if (event.getPriority() != null) data.put("priority", event.getPriority());
+        if (event.getSourcePublishedAt() != null)
+            data.put("publishedAt", event.getSourcePublishedAt().toInstant().toString());
         return data;
     }
 

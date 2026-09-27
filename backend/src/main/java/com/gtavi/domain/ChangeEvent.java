@@ -21,6 +21,12 @@ public class ChangeEvent {
     private String evidenceUrl;
     private String deduplicationKey;
     private OffsetDateTime detectedAt;
+    /**
+     * Publication date of the underlying item (for example a Newswire article).
+     * Populated whenever the source exposes a verified date so alerts can avoid
+     * re-announcing something that was already published long ago.
+     */
+    private OffsetDateTime sourcePublishedAt;
     private boolean userVisible;
     private boolean notificationEligible;
     private OffsetDateTime createdAt;
@@ -53,6 +59,8 @@ public class ChangeEvent {
     public void setDeduplicationKey(String deduplicationKey) { this.deduplicationKey = deduplicationKey; }
     public OffsetDateTime getDetectedAt() { return detectedAt; }
     public void setDetectedAt(OffsetDateTime detectedAt) { this.detectedAt = detectedAt; }
+    public OffsetDateTime getSourcePublishedAt() { return sourcePublishedAt; }
+    public void setSourcePublishedAt(OffsetDateTime sourcePublishedAt) { this.sourcePublishedAt = sourcePublishedAt; }
     public boolean isUserVisible() { return userVisible; }
     public void setUserVisible(boolean userVisible) { this.userVisible = userVisible; }
     public boolean isNotificationEligible() { return notificationEligible; }

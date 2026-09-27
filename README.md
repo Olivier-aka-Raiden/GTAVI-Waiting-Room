@@ -260,7 +260,7 @@ HTML parsing uses a checked-in synthetic Next.js RSC fixture instead of fetching
 
 ### Retailers Shown on Edition Cards
 
-When a retailer monitor detects GTA VI products (via AI extraction), they appear as "Where to order" links on the corresponding edition card — with price, currency, platform, and availability status. The app currently tracks **6 retailers** across Switzerland and France.
+When a retailer monitor detects GTA VI products (via AI extraction), they appear as "Where to order" links on the corresponding edition card — with price, currency, platform, and availability status. Listings whose title matches no distinct edition (regional boxes and market variants) belong to the Standard Edition instead of becoming a card of their own. The app currently tracks **6 retailers** across Switzerland and France.
 
 ---
 
@@ -276,7 +276,7 @@ Read endpoints under /api/v1/games/gta-vi/news: the root is paginated news, /{id
 
 Discovery checks the verified public Newswire API, its GTA VI archive cursor, and linked official pages. Article bodies are hydrated from the public API. Both new and older AI extractors resume overlapping chunks; verified JSON-LD products and music links remain available during AI outages. Explicit shared links merge related pages; later preorder, stock, price and material news changes create separate events.
 
-Budgets: gtavi.news.pages-per-run (12), gtavi.news.ai-calls-per-run (10), gtavi.news.ai-characters-per-run (100000), and gtavi.monitoring.ai-calls-per-source (4). Also configurable: gtavi.news.enabled, gtavi.news.newswire-tag (666), gtavi.news.alert-lookback-days (14), and gtavi.news.seed-urls. Existing scheduling and dependencies are reused.
+Budgets: gtavi.news.pages-per-run (12), gtavi.news.ai-calls-per-run (10), gtavi.news.ai-characters-per-run (100000), and gtavi.monitoring.ai-calls-per-source (4). Also configurable: gtavi.news.enabled, gtavi.news.newswire-tag (666), gtavi.news.alert-lookback-days (14), gtavi.news.seed-urls, and gtavi.notifications.max-source-age-days (14). Existing scheduling and dependencies are reused.
 
 The status endpoint reports persistent pending/failed page counts and AI usage. Incomplete work degrades monitoring health and automatically retries; these diagnostics add no user alert stream. Cards retain separate variant/currency/market offers and verified values during partial extraction.
 
@@ -320,3 +320,7 @@ Music formats from the official Album announcement are reconciled into one card,
 ### Newswire date recovery
 
 Newswire responses with `errors: null` or `errors: []` are accepted. Verified dates enrich existing articles and cached extractions automatically; dated announcements lead the feed, with explicitly related undated landing pages reconciled out of the news view. See [date recovery and validation](docs/2026-09-26-newswire-date-recovery.md).
+
+### Alert deduplication, edition grouping and prices
+
+News alerts key their occurrence on the new fact set instead of a per-observation counter, carry the verified publication date, and are only pushed once per item per day; items published before `gtavi.notifications.max-source-age-days` (default 14) stay in the timeline without a push. Retailer listings that match no known edition join the base game's Standard Edition, and non-official `UNKNOWN` editions without offers are hidden from the public edition list. A price observed without a currency is quoted in the retailer's market currency (Amazon.fr EUR, Rockstar Store USD, Swiss stores CHF) and locale-formatted prices are normalized. See [duplicate alerts, stray editions and missing prices](docs/2026-09-27-alert-dedupe-editions-prices.md).

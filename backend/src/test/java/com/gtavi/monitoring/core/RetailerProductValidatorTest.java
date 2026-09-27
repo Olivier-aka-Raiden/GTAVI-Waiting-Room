@@ -135,4 +135,28 @@ class RetailerProductValidatorTest {
                 "https://www.rockstargames.com/VI/editions", mapper.readTree(data)));
         }
     }
+
+    @Test
+    void keepsObservedPricesAndNormalizesLocaleFormats() throws Exception {
+        var extracted = mapper.readTree("""
+            {"products":[
+              {"name":"Grand Theft Auto VI Standard Edition","edition":"STANDARD","platform":"PS5",
+               "url":"/product/1","price":"CHF 72.90"},
+              {"name":"Grand Theft Auto VI Ultimate Edition","edition":"ULTIMATE","platform":"PS5",
+               "url":"/product/2","price":"89,90"},
+              {"name":"Grand Theft Auto VI Collector's Edition","edition":"COLLECTOR","platform":"PS5",
+               "url":"/product/3","price":"1'299.00"},
+              {"name":"Grand Theft Auto VI Deluxe Edition","edition":"DELUXE","platform":"PS5",
+               "url":"/product/4","price":"free"}
+            ]}
+            """);
+
+        var products = validator.validate("TEST", "https://store.example/gta-vi", extracted).path("products");
+
+        assertEquals(4, products.size());
+        assertEquals(0, new java.math.BigDecimal("72.90").compareTo(products.get(0).path("price").decimalValue()));
+        assertEquals(0, new java.math.BigDecimal("89.90").compareTo(products.get(1).path("price").decimalValue()));
+        assertEquals(0, new java.math.BigDecimal("1299.00").compareTo(products.get(2).path("price").decimalValue()));
+        assertTrue(products.get(3).path("price").isNull(), "Text without digits is not a price");
+    }
 }

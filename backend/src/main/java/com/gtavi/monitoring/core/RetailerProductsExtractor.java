@@ -16,7 +16,9 @@ public interface RetailerProductsExtractor {
         price: positive numeric total price for this exact listing, without currency symbols.
         Never substitute a discount amount, deposit, installment, price range minimum or another product's price.
         currency: CHF, EUR or USD only when unambiguously stated for this price; otherwise null.
-        If either price or its supported currency is unknown, return both as null. A dollar sign alone is ambiguous.
+        Report an observed price even when its currency is not stated; the backend supplies the
+        retailer's market currency. Return price as null only when no total price is visible.
+        A dollar sign alone is ambiguous and never establishes USD.
         availability: IN_STOCK, OUT_OF_STOCK, PREORDER, COMING_SOON, UNAVAILABLE, or UNKNOWN.
         Active pre-order -> PREORDER; in stock -> IN_STOCK; explicitly sold out -> OUT_OF_STOCK;
         announced without ordering -> COMING_SOON; explicitly unavailable -> UNAVAILABLE.

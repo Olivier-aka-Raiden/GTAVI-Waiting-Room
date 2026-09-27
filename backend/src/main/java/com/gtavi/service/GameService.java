@@ -29,7 +29,18 @@ public class GameService {
     }
 
     public List<Edition> getEditions(String gameCode) {
-        return persistence.getEditions(gameCode);
+        return persistence.getEditions(gameCode).stream()
+            .filter(this::isVisibleEdition)
+            .toList();
+    }
+
+    /**
+     * Ungrouped retailer stubs (regional boxes and market variants) must never render as
+     * edition cards. A real edition is official or carries at least one active offer.
+     */
+    private boolean isVisibleEdition(Edition edition) {
+        if (edition.isOfficial() || !"UNKNOWN".equals(edition.getNormalizedType())) return true;
+        return !persistence.getOffers(edition.getId()).isEmpty();
     }
 
     public List<ChangeEvent> getEvents(String gameCode, int page, int size) {

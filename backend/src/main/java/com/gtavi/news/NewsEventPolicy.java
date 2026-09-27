@@ -28,12 +28,17 @@ public class NewsEventPolicy {
         }
         var knownFacts=new java.util.HashSet<String>();
         previous.path("facts").forEach(fact->knownFacts.add(fact.path("id").asText()));
-        boolean newMajorFact=false;
+        var newMajorFacts=new java.util.TreeSet<String>();
         for(var fact:article.path("facts")) if("MAJOR".equals(fact.path("importance").asText())
-                && !knownFacts.contains(fact.path("id").asText())) newMajorFact=true;
+                && !knownFacts.contains(fact.path("id").asText()))
+            newMajorFacts.add(normalize(fact.path("subject").asText())+"|"+normalize(fact.path("value").asText()));
         boolean promoted="MAJOR".equals(article.path("importance").asText()) && !"MAJOR".equals(previous.path("importance").asText());
-        if((newMajorFact && !article.path("observationHash").asText().equals(previous.path("observationHash").asText())) || promoted) events.add(event(article,"MAJOR_OFFICIAL_NEWS","FACTS:"+revision,
-            article.path("title").asText()+" — new details",article.path("description").asText(),true));
+        // The occurrence is the new fact set itself, never a per-run counter: recovering
+        // the same detail twice must not create a second "new details" alert.
+        String factsOccurrence="FACTS:"+OfficialPage.fingerprint(String.join("\n",newMajorFacts));
+        if((!newMajorFacts.isEmpty() && !article.path("observationHash").asText().equals(previous.path("observationHash").asText())) || promoted)
+            events.add(event(article,"MAJOR_OFFICIAL_NEWS",factsOccurrence,
+                article.path("title").asText()+" — new details",article.path("description").asText(),recent(article)));
         boolean preorder = false;
         for (ObjectNode product : products) {
             JsonNode old = oldProduct.apply(product.path("id").asText());
@@ -62,13 +67,21 @@ public class NewsEventPolicy {
         if(product!=null) for(JsonNode offer:product.path("offers")) if(id.equals(offer.path("id").asText())) return offer;
         return null;
     }
+    private static String normalize(String value) {
+        return value==null ? "" : value.toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+"," ").strip();
+    }
     private boolean recent(JsonNode article) {
-        try { return OffsetDateTime.parse(article.path("publishedAt").asText()).isAfter(OffsetDateTime.now().minusDays(lookbackDays)); }
-        catch(Exception ignored) {
-            try {
-                return !java.time.LocalDate.parse(article.path("publishedAt").asText())
-                    .isBefore(java.time.LocalDate.now(java.time.ZoneOffset.UTC).minusDays(lookbackDays));
-            } catch (java.time.DateTimeException unknown) { return true; }
+        OffsetDateTime published=publishedAt(article);
+        return published==null || published.isAfter(OffsetDateTime.now().minusDays(lookbackDays));
+    }
+    /** Verified publication date, or null when the source never stated one. */
+    private static OffsetDateTime publishedAt(JsonNode article) {
+        String value=article.path("publishedAt").asText("");
+        if(value.isBlank()) return null;
+        try { return OffsetDateTime.parse(value); }
+        catch(java.time.DateTimeException notAnInstant) {
+            try { return java.time.LocalDate.parse(value).atStartOfDay().atOffset(java.time.ZoneOffset.UTC); }
+            catch (java.time.DateTimeException dateOnly) { return null; }
         }
     }
     private ChangeEvent event(ObjectNode article,String type,String occurrence,String title,String description,boolean notify) {
@@ -78,6 +91,7 @@ public class NewsEventPolicy {
         event.setTitle(title); event.setDescription(description); event.setEvidenceUrl(article.path("sourceUrl").asText());
         event.setNewValue(article.path("id").asText()); event.setDeduplicationKey("NEWS:"+article.path("id").asText()+":"+type+":"+occurrence);
         event.setDetectedAt(OffsetDateTime.now()); event.setCreatedAt(event.getDetectedAt());
+        event.setSourcePublishedAt(publishedAt(article));
         event.setUserVisible(true); event.setNotificationEligible(notify);
         return event;
     }

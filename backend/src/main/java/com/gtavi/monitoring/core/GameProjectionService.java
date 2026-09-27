@@ -31,13 +31,23 @@ public class GameProjectionService {
             for(JsonNode fact:data.path("editions")) edition(fact);
         if(source.startsWith("ROCKSTAR_")) for(JsonNode fact:data.path("videos")) video(fact,sourceUrl);
     }
-    public String ensureRetailEdition(String name,String source) {
-        var existing=persistence.getEditions("GTA_VI").stream().filter(e->name.equalsIgnoreCase(e.getName())).findFirst();
+    /**
+     * The base game edition used for retailer listings without a distinct edition label.
+     * Ordinary retailer product names (regional boxes, market variants) belong to the
+     * standard edition instead of becoming edition cards of their own.
+     */
+    public String ensureStandardEdition() {
+        var editions=persistence.getEditions("GTA_VI");
+        var existing=editions.stream()
+            .filter(e->"STANDARD".equals(e.getNormalizedType())&&e.isOfficial()).findFirst()
+            .or(()->editions.stream().filter(e->"STANDARD".equals(e.getNormalizedType())).findFirst())
+            .or(()->editions.stream().filter(e->e.getName()!=null
+                &&e.getName().toLowerCase(Locale.ROOT).contains("standard")).findFirst());
         if(existing.isPresent()) return existing.get().getId();
         var edition=new Edition();
-        edition.setId("edition-"+OfficialPage.fingerprint(name.toLowerCase(Locale.ROOT)));
-        edition.setGameCode("GTA_VI"); edition.setName(name); edition.setNormalizedType("UNKNOWN");
-        edition.setOfficial("ROCKSTAR_STORE".equals(source)); edition.setStatus("ANNOUNCED");
+        edition.setId("edition-"+OfficialPage.fingerprint("standard edition"));
+        edition.setGameCode("GTA_VI"); edition.setName("Standard Edition");
+        edition.setNormalizedType("STANDARD"); edition.setOfficial(false); edition.setStatus("ANNOUNCED");
         edition.setCreatedAt(OffsetDateTime.now()); edition.setUpdatedAt(OffsetDateTime.now());
         persistence.saveEdition(edition);
         return edition.getId();
