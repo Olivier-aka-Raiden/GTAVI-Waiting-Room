@@ -20,7 +20,11 @@ class ProductCatalogApiTest extends RedisBackedTest {
         given().get("/api/v1/games/gta-vi/news/products?size=100").then().statusCode(200)
             .body("items.findAll { it.category == 'ALBUM' }.size()", equalTo(1))
             .body("items.find { it.category == 'ALBUM' }.offers.size()", equalTo(3))
-            .body("items.findAll { it.category == 'COLLECTIBLE' }.size()", equalTo(1));
+            .body("items.findAll { it.category == 'COLLECTIBLE' }.size()", equalTo(1))
+            .body("items.find { it.category == 'COLLECTIBLE' }.offers.size()", equalTo(1))
+            .body("items.find { it.category == 'COLLECTIBLE' }.offers[0].price", notNullValue())
+            .body("items.find { it.category == 'COLLECTIBLE' }.offers[0].currency", equalTo("EUR"))
+            .body("items.findAll { it.category == 'MERCHANDISE' }.size()", equalTo(1));
         given().get("/api/v1/games/gta-vi/news/products?size=1").then().statusCode(200)
             .body("items.size()", equalTo(1)).body("total", greaterThan(1));
         org.junit.jupiter.api.Assertions.assertEquals(raw.path("items").size(), repository.count("products"),

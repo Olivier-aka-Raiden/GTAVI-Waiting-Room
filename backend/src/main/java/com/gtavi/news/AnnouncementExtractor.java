@@ -27,6 +27,8 @@ public interface AnnouncementExtractor {
         name: exact product name copied from the chunk, not a synthesized marketing title.
         category: COLLECTIBLE, VINYL, CD, ALBUM, MERCHANDISE or GAME.
         Include standalone collectible boxes even when the game is sold separately and collector is absent from the name.
+        A collection box is one product: describe what it contains in its description and evidence, and report an
+        included item as its own product only when the source gives that item its own purchase URL.
         Include official soundtracks, vinyl, CDs and merchandise; exclude unrelated GTA V and third-party speculation.
         description: copy a supporting excerpt or use null, not a paraphrase.
         imageUrl and purchaseUrl: copy observed URLs; relative URLs are allowed. Never construct them.

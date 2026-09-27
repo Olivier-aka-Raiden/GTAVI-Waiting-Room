@@ -56,12 +56,81 @@ public class ProductCatalog {
                 item.path("offers").forEach(offer -> add(offers, offer, item));
             else add(offers, item, item);
             var array = merged.putArray("offers");
-            offers.values().forEach(array::add);
+            visibleOffers(offers).forEach(array::add);
         }
         var result = new ArrayList<>(groups.values());
         result.sort(Comparator.comparing((ObjectNode item) -> item.path("updatedAt").asText("")).reversed());
-        return result;
+        return reconcile(result);
     }
+
+    /**
+     * One card per announced item. A verified price makes an unpriced duplicate of the same
+     * item redundant, and a collection box described by a purchase link owns the page's
+     * descriptive entries: the contents of a box are never sold separately.
+     */
+    private static List<ObjectNode> reconcile(List<ObjectNode> cards) {
+        var priced = new HashMap<String, ObjectNode>();
+        for (ObjectNode card : cards) {
+            if (!hasPrice(card)) continue;
+            priced.merge(articleOf(card) + "|" + name(card), card, (current, candidate) -> current);
+        }
+        var collectionPages = new HashSet<String>();
+        for (ObjectNode card : cards) if (isLinkedCollection(card)) collectionPages.add(articleOf(card));
+        var kept = new ArrayList<ObjectNode>();
+        for (ObjectNode card : cards) {
+            ObjectNode verified = priced.get(articleOf(card) + "|" + name(card));
+            if (verified != null && verified != card && !hasPrice(card)) {
+                foldInto(verified, card);
+                continue;
+            }
+            if (collectionPages.contains(articleOf(card)) && card.path("offers").isEmpty() && !hasPrice(card))
+                continue;
+            kept.add(card);
+        }
+        return kept;
+    }
+
+    /** Keep the richest description and a missing image when an unpriced duplicate is dropped. */
+    private static void foldInto(ObjectNode target, ObjectNode dropped) {
+        if (dropped.path("description").asText("").length() > target.path("description").asText("").length())
+            target.put("description", dropped.path("description").asText());
+        if (!target.hasNonNull("imageUrl") && dropped.hasNonNull("imageUrl"))
+            target.set("imageUrl", dropped.get("imageUrl"));
+    }
+
+    private static boolean isLinkedCollection(JsonNode card) {
+        if (card.path("offers").isEmpty()) return false;
+        String lower = card.path("name").asText("").toLowerCase(Locale.ROOT);
+        return "COLLECTIBLE".equals(card.path("category").asText())
+            || lower.contains("collection") || lower.contains("collector") || lower.contains("box");
+    }
+
+    private static boolean hasPrice(JsonNode card) {
+        return positive(card.path("price")) || card.path("offers").findValues("price").stream().anyMatch(ProductCatalog::positive);
+    }
+
+    private static boolean positive(JsonNode value) {
+        return value.isNumber() && value.asDouble() > 0;
+    }
+
+    private static String articleOf(JsonNode card) {
+        return card.path("articleId").asText("");
+    }
+
+    /** An unpriced observation of one listing never renders beside its priced offer. */
+    private static List<ObjectNode> visibleOffers(Map<String, ObjectNode> offers) {
+        var pricedListings = new HashSet<String>();
+        offers.values().stream().filter(ProductCatalog::hasPrice).forEach(offer -> pricedListings.add(listingOf(offer)));
+        return offers.values().stream()
+            .filter(offer -> hasPrice(offer) || !pricedListings.contains(listingOf(offer)))
+            .toList();
+    }
+
+    private static String listingOf(JsonNode offer) {
+        return com.gtavi.monitoring.core.OfferIdentity.url(offer.path("purchaseUrl").asText(""))
+            + "|" + offer.path("variant").asText("") + "|" + offer.path("market").asText("");
+    }
+
     private static void add(Map<String, ObjectNode> offers, JsonNode source, JsonNode product) {
         String url = source.path("purchaseUrl").asText(product.path("purchaseUrl").asText(""));
         if (OfficialPage.resolve(url, url) == null) return;

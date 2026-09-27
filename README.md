@@ -324,3 +324,7 @@ Newswire responses with `errors: null` or `errors: []` are accepted. Verified da
 ### Alert deduplication, edition grouping and prices
 
 News alerts key their occurrence on the new fact set instead of a per-observation counter, carry the verified publication date, and are only pushed once per item per day; items published before `gtavi.notifications.max-source-age-days` (default 14) stay in the timeline without a push. Retailer listings that match no known edition join the base game's Standard Edition, and non-official `UNKNOWN` editions without offers are hidden from the public edition list. A price observed without a currency is quoted in the retailer's market currency (Amazon.fr EUR, Rockstar Store USD, Swiss stores CHF) and locale-formatted prices are normalized. See [duplicate alerts, stray editions and missing prices](docs/2026-09-27-alert-dedupe-editions-prices.md).
+
+### Collection boxes and priced offers
+
+Collectibles are reconciled per item: a collection box is one card, its contents are described by that card instead of becoming individual products, and an unpriced observation of a listing never renders beside its priced offer. Raw observations are retained, so existing records are corrected on read without a migration. The announcement prompt reports an included item separately only when the source gives it its own purchase URL. See [collection boxes, contents and duplicate offers](docs/2026-09-27-collectible-box-grouping.md).

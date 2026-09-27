@@ -81,4 +81,55 @@ class ProductCatalogTest {
         assertEquals(4, music.getFirst().path("offers").size());
         assertTrue(music.getFirst().path("imageUrl").asText().contains("50105de3da220dff6dd47fad6865b1912e7466ca.jpg"));
     }
+
+    @Test void collectionContentsAndUnpricedDuplicatesLeaveOnePricedBox() throws Exception {
+        var rows = new ArrayList<JsonNode>();
+        rows.add(json.readTree("""
+            {"id":"box","name":"Grand Theft Auto VI: The Goodtime State – Vice City Collection","category":"COLLECTIBLE",
+             "articleId":"collection",
+             "sourceUrl":"https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+             "purchaseUrl":"https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+             "price":399.99,"currency":"EUR","limited":true,"updatedAt":"2026-09-27T15:08:03Z",
+             "imageUrl":"https://images.example/box.png",
+             "description":"A premium Collector’s Box featuring all the essentials for a good time.",
+             "offers":[
+               {"purchaseUrl":"https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+                "variant":"box","availability":"PREORDER","verifiedAt":"2026-09-27T15:02:03Z"},
+               {"purchaseUrl":"https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+                "variant":"box","availability":"PREORDER","price":399.99,"currency":"EUR","verifiedAt":"2026-09-27T15:08:03Z"}]}
+            """));
+        rows.add(json.readTree("""
+            {"id":"article","name":"Grand Theft Auto VI: The Goodtime State – Vice City Collection","category":"COLLECTIBLE",
+             "articleId":"collection","purchaseUrl":"https://store.rockstargames.com",
+             "sourceUrl":"https://www.rockstargames.com/newswire/article/box","updatedAt":"2026-09-27T09:01:09Z",
+             "description":"Introducing the collection. The Goodtime State – Vice City Collection includes: a Macca the Gator figure, sunglasses, a snapback hat, a magnetic mirror, a swizzle spoon, a keychain, a crossbody bag, a shot glass, an enamel pin set, stickers and a double-sided poster.",
+             "offers":[{"purchaseUrl":"https://store.rockstargames.com","variant":"box",
+                        "availability":"PREORDER","verifiedAt":"2026-09-27T09:01:09Z"}]}
+            """));
+        for (String entry : List.of(
+                "{\"id\":\"gear\",\"name\":\"GOODTIME GEAR\",\"category\":\"MERCHANDISE\",\"offers\":[]}",
+                "{\"id\":\"figure\",\"name\":\"Macca the Gator Figure\",\"category\":\"COLLECTIBLE\",\"offers\":[]}",
+                "{\"id\":\"alias\",\"name\":\"Vice City Collection\",\"category\":\"COLLECTIBLE\",\"offers\":[]}"))
+            rows.add(((ObjectNode) json.readTree(entry)).put("articleId", "collection")
+                .put("sourceUrl", "https://www.rockstargames.com/VI/vice-city-collection"));
+
+        var products = ProductCatalog.group(rows);
+
+        assertEquals(1, products.size(), "The box is the product; its contents are not separate cards");
+        var box = products.getFirst();
+        assertEquals("Grand Theft Auto VI: The Goodtime State – Vice City Collection", box.path("name").asText());
+        assertEquals(1, box.path("offers").size(), "The priced offer replaces its unpriced duplicate");
+        assertEquals(399.99, box.path("offers").get(0).path("price").asDouble());
+        assertEquals("EUR", box.path("offers").get(0).path("currency").asText());
+        assertTrue(box.path("description").asText().contains("includes:"),
+            "The kept card carries the describing contents list");
+        assertEquals(products, ProductCatalog.group(rows), "Grouping must be stable across refreshes");
+    }
+
+    @Test void linklessAnnouncementWithoutALinkedBoxStaysVisible() throws Exception {
+        var rows = List.<JsonNode>of(
+            json.readTree("{\"id\":\"a\",\"name\":\"GTA VI collectible box\",\"category\":\"COLLECTIBLE\",\"articleId\":\"announced\",\"offers\":[]}"),
+            json.readTree("{\"id\":\"b\",\"name\":\"Macca the Gator Figure\",\"category\":\"COLLECTIBLE\",\"articleId\":\"announced\",\"offers\":[]}"));
+        assertEquals(2, ProductCatalog.group(rows).size());
+    }
 }
