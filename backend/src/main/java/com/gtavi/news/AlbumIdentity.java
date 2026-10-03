@@ -52,7 +52,7 @@ final class AlbumIdentity {
         return false;
     }
     private static boolean music(JsonNode item) {
-        return Set.of("MUSIC", "ALBUM", "VINYL", "CD").contains(item.path("category").asText());
+        return ProductCategories.music(item.path("category").asText());
     }
     private static String normalized(JsonNode item) {
         return item.path("name").asText("").toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", " ").strip();

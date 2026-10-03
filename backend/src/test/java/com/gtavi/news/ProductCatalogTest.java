@@ -18,7 +18,13 @@ class ProductCatalogTest {
         assertEquals(3, albums.getFirst().path("offers").size());
         assertFalse(albums.getFirst().has("limited"));
         assertTrue(albums.getFirst().path("offers").toString().contains("limitededitionvinyl"));
-        assertEquals(1, products.stream().filter(p -> "COLLECTIBLE".equals(p.path("category").asText())).count());
+        // The same fixture the API test serves: one priced collectible box and one merchandise card.
+        var collectibles = products.stream().filter(p -> "COLLECTIBLE".equals(p.path("category").asText())).toList();
+        assertEquals(1, collectibles.size());
+        assertEquals(1, collectibles.getFirst().path("offers").size());
+        assertTrue(collectibles.getFirst().path("offers").get(0).hasNonNull("price"));
+        assertEquals("EUR", collectibles.getFirst().path("offers").get(0).path("currency").asText());
+        assertEquals(1, products.stream().filter(p -> "MERCHANDISE".equals(p.path("category").asText())).count());
         assertEquals(products, ProductCatalog.group(rows), "Grouping must be stable across refreshes");
     }
     @Test void separateSkuVariantsAndCurrenciesAreNotCollapsed() throws Exception {
@@ -131,6 +137,64 @@ class ProductCatalogTest {
             json.readTree("{\"id\":\"a\",\"name\":\"GTA VI collectible box\",\"category\":\"COLLECTIBLE\",\"articleId\":\"announced\",\"offers\":[]}"),
             json.readTree("{\"id\":\"b\",\"name\":\"Macca the Gator Figure\",\"category\":\"COLLECTIBLE\",\"articleId\":\"announced\",\"offers\":[]}"));
         assertEquals(2, ProductCatalog.group(rows).size());
+    }
+
+    /**
+     * The store page reports the box twice: once with its purchase link and once from the embedded
+     * JSON-LD that carries the price but no URL. The Newswire announcement of the same box has its
+     * own variant, so a name lookup cannot decide the owner and the unpriced duplicate used to
+     * survive beside the priced card.
+     */
+    @Test void pricedObservationWithoutAListingJoinsTheAnnouncedBox() throws Exception {
+        var rows = new ArrayList<JsonNode>();
+        rows.add(json.readTree("""
+            {"id":"store","name":"Grand Theft Auto VI: The Goodtime State – Vice City Collection","category":"COLLECTIBLE",
+             "articleId":"collection","updatedAt":"2026-10-03T12:04:03Z","limited":true,"gameIncluded":false,
+             "sourceUrl":"https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+             "purchaseUrl":"https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+             "price":399.99,"currency":"EUR","availability":"PREORDER","imageUrl":"https://images.example/box.png",
+             "description":"a premium Grand Theft Auto VI collectible set featuring all the essentials for a good time."}
+            """));
+        rows.add(json.readTree("""
+            {"id":"newswire","name":"Grand Theft Auto VI: The Goodtime State – Vice City Collection","category":"COLLECTIBLE",
+             "articleId":"collection","updatedAt":"2026-10-03T09:00:00Z",
+             "sourceUrl":"https://www.rockstargames.com/newswire/article/9k2a49ook82o57",
+             "purchaseUrl":"https://store.rockstargames.com",
+             "description":"Introducing the collection, a premium collectible set.",
+             "offers":[{"purchaseUrl":"https://store.rockstargames.com",
+                        "variant":"Grand Theft Auto VI: The Goodtime State – Vice City Collection","availability":"PREORDER"}]}
+            """));
+        rows.add(json.readTree("""
+            {"id":"json-ld","name":"Grand Theft Auto VI: The Goodtime State – Vice City Collection","category":"COLLECTIBLE",
+             "articleId":"collection","updatedAt":"2026-10-03T06:05:46Z","limited":true,
+             "sourceUrl":"https://store.rockstargames.com/merchandise/gtavi-goodtime-state-vice-city-collection",
+             "description":"A premium Collector’s Box featuring all the essentials for a good time.",
+             "price":399.99,"currency":"EUR","availability":"PREORDER","offers":[]}
+            """));
+
+        var collectibles = ProductCatalog.group(rows).stream()
+            .filter(p -> "COLLECTIBLE".equals(p.path("category").asText())).toList();
+
+        assertEquals(1, collectibles.size(), "One announced box renders as one card");
+        assertEquals(399.99, collectibles.getFirst().path("offers").get(0).path("price").asDouble());
+        assertEquals("EUR", collectibles.getFirst().path("offers").get(0).path("currency").asText());
+    }
+
+    @Test void aLinkedCollectionOwnsItsPageInEveryCategory() throws Exception {
+        var rows = List.<JsonNode>of(
+            json.readTree("""
+                {"id":"box","name":"Goodtime Gear Collection","category":"MERCHANDISE","articleId":"gear","offers":[
+                  {"purchaseUrl":"https://store.rockstargames.com/merchandise/gear-collection","price":49,"currency":"EUR"}]}
+                """),
+            json.readTree("""
+                {"id":"heading","name":"GOODTIME GEAR","category":"MERCHANDISE","articleId":"gear",
+                 "sourceUrl":"https://www.rockstargames.com/VI/music","offers":[]}
+                """));
+
+        var products = ProductCatalog.group(rows);
+
+        assertEquals(1, products.size(), "Page headings are not products, whatever the category");
+        assertEquals("Goodtime Gear Collection", products.getFirst().path("name").asText());
     }
 
     @Test void albumExclusivesNamedInProseStayOnTheAlbumCard() throws Exception {

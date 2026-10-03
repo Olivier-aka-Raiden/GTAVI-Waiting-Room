@@ -6,7 +6,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.*;
 
-/** Public product families with format/market choices; raw observations remain available for replay. */
+/**
+ * Public product families with format/market choices; raw observations remain available for replay.
+ * One rule set applies to every category (collectibles, merchandise and music alike): a card backed by
+ * a purchase listing represents the product, unlinked observations are evidence about that product, and
+ * distinct listings keep their own cards so format, currency and market choices stay visible.
+ */
 @ApplicationScoped
 public class ProductCatalog {
     @Inject NewsRepository repository;
@@ -27,6 +32,7 @@ public class ProductCatalog {
 
     static List<ObjectNode> group(List<JsonNode> observations) {
         var album = new AlbumIdentity(observations);
+        // A linkless observation belongs to the single listing that carries its name.
         var linkedNames = new HashMap<String, Set<String>>();
         for (JsonNode item : observations) if (!item.path("purchaseUrl").asText("").isBlank())
             linkedNames.computeIfAbsent(name(item), ignored -> new LinkedHashSet<>()).add(identity(item, album.matches(item)));
@@ -72,45 +78,73 @@ public class ProductCatalog {
     }
 
     /**
-     * One card per announced item. A verified price makes an unpriced duplicate of the same
-     * item redundant, and a collection box described by a purchase link owns the page's
-     * descriptive entries: the contents of a box are never sold separately.
+     * One card per announced item, for every category. Two cards describe the same item when they share
+     * an announcement and a normalized name. A card backed by a purchase listing owns a card without one,
+     * and a priced listing owns its unpriced duplicate; cards for genuinely separate listings (distinct
+     * SKUs, formats or markets) keep their own cards instead of being collapsed.
      */
     private static List<ObjectNode> reconcile(List<ObjectNode> cards) {
-        var priced = new HashMap<String, ObjectNode>();
+        var listings = new HashMap<String, ObjectNode>();
         for (ObjectNode card : cards) {
-            if (!hasPrice(card)) continue;
-            priced.merge(articleOf(card) + "|" + name(card), card, (current, candidate) -> current);
+            if (!isListing(card)) continue;
+            String key = itemKey(card);
+            if (key == null) continue;
+            ObjectNode known = listings.get(key);
+            if (known == null || (!hasPrice(known) && hasPrice(card))) listings.put(key, card);
         }
         var collectionPages = new HashSet<String>();
-        for (ObjectNode card : cards) if (isLinkedCollection(card)) collectionPages.add(articleOf(card));
+        for (ObjectNode listing : listings.values()) if (isCollection(listing)) collectionPages.add(articleOf(listing));
         var kept = new ArrayList<ObjectNode>();
         for (ObjectNode card : cards) {
-            ObjectNode verified = priced.get(articleOf(card) + "|" + name(card));
-            if (verified != null && verified != card && !hasPrice(card)) {
-                foldInto(verified, card);
+            String key = itemKey(card);
+            ObjectNode listing = key == null ? null : listings.get(key);
+            if (listing != null && listing != card
+                    && (!isListing(card) || (!hasPrice(card) && hasPrice(listing)))) {
+                foldInto(listing, card);
                 continue;
             }
-            if (collectionPages.contains(articleOf(card)) && card.path("offers").isEmpty() && !hasPrice(card))
-                continue;
+            // A linked collection describes its own page: the page's linkless entries are its contents.
+            if (!isListing(card) && collectionPages.contains(articleOf(card))) continue;
             kept.add(card);
         }
         return kept;
     }
 
-    /** Keep the richest description and a missing image when an unpriced duplicate is dropped. */
+    /** The announced item two cards can describe: its announcement plus its normalized name. */
+    private static String itemKey(JsonNode card) {
+        String article = articleOf(card);
+        String name = name(card);
+        return article.isBlank() || name.isBlank() ? null : article + "|" + name;
+    }
+
+    /** A purchase link or an offer makes a card purchasable; without either it is only evidence. */
+    private static boolean isListing(JsonNode card) {
+        return !card.path("offers").isEmpty() || !card.path("purchaseUrl").asText("").isBlank();
+    }
+
+    /**
+     * A collection product (collection, collector or box) described by a purchase link owns its
+     * announcement's linkless entries. Naming decides this for every category alike.
+     */
+    private static boolean isCollection(JsonNode card) {
+        if (!isListing(card)) return false;
+        String lower = card.path("name").asText("").toLowerCase(Locale.ROOT);
+        return lower.contains("collection") || lower.contains("collector") || lower.contains("box");
+    }
+
+    /** Keep the richest description, a missing picture, and any fact the surviving card lacks. */
     private static void foldInto(ObjectNode target, ObjectNode dropped) {
         if (dropped.path("description").asText("").length() > target.path("description").asText("").length())
             target.put("description", dropped.path("description").asText());
         if (!target.hasNonNull("imageUrl") && dropped.hasNonNull("imageUrl"))
             target.set("imageUrl", dropped.get("imageUrl"));
-    }
-
-    private static boolean isLinkedCollection(JsonNode card) {
-        if (card.path("offers").isEmpty()) return false;
-        String lower = card.path("name").asText("").toLowerCase(Locale.ROOT);
-        return "COLLECTIBLE".equals(card.path("category").asText())
-            || lower.contains("collection") || lower.contains("collector") || lower.contains("box");
+        // A price observed without its own listing is still a price of the product it describes.
+        if (!hasPrice(target) && dropped.hasNonNull("price") && positive(dropped.path("price"))) {
+            target.set("price", dropped.get("price"));
+            if (dropped.hasNonNull("currency")) target.set("currency", dropped.get("currency"));
+        }
+        for (String field : List.of("limited", "gameIncluded", "availability"))
+            if (!target.hasNonNull(field) && dropped.hasNonNull(field)) target.set(field, dropped.get(field));
     }
 
     private static boolean hasPrice(JsonNode card) {

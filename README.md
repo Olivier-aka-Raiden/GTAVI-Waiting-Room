@@ -325,9 +325,9 @@ Newswire responses with `errors: null` or `errors: []` are accepted. Verified da
 
 News alerts key their occurrence on the new fact set instead of a per-observation counter, carry the verified publication date, and are only pushed once per item per day; items published before `gtavi.notifications.max-source-age-days` (default 14) stay in the timeline without a push. Retailer listings that match no known edition join the base game's Standard Edition, and non-official `UNKNOWN` editions without offers are hidden from the public edition list. A price observed without a currency is quoted in the retailer's market currency (Amazon.fr EUR, Rockstar Store USD, Swiss stores CHF) and locale-formatted prices are normalized. See [duplicate alerts, stray editions and missing prices](docs/2026-09-27-alert-dedupe-editions-prices.md).
 
-### Collection boxes and priced offers
+### One card per announced item
 
-Collectibles are reconciled per item: a collection box is one card, its contents are described by that card instead of becoming individual products, and an unpriced observation of a listing never renders beside its priced offer. Raw observations are retained, so existing records are corrected on read without a migration. The announcement prompt reports an included item separately only when the source gives it its own purchase URL. See [collection boxes, contents and duplicate offers](docs/2026-09-27-collectible-box-grouping.md).
+Collectibles, merchandise and music follow one rule set in the public catalog: two cards describe the same item when they share an announcement and a normalized name, a card with a purchase listing owns a card without one, and a priced listing owns its unpriced duplicate. Genuinely separate listings (distinct SKUs, formats, currencies or markets) keep their own cards, and a linked collection owns the linkless entries listed on its page. Raw observations are retained, so existing records are corrected on read without a migration. The announcement prompt reports an included item separately only when the source gives it its own purchase URL. See [one card per announced item](docs/2026-10-03-duplicate-collectible-card.md) and [collection boxes, contents and duplicate offers](docs/2026-09-27-collectible-box-grouping.md).
 
 ### Album formats
 

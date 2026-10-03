@@ -82,8 +82,8 @@ public class NewsAnalyzer {
                     if (!ProductEvidence.price(p.evidence(), p.price(), p.currency())) {
                         item.putNull("price"); item.putNull("currency");
                     }
-                    if (!Set.of("COLLECTIBLE","VINYL","CD","ALBUM","MERCHANDISE","GAME").contains(
-                            Objects.toString(p.category(),""))) item.put("category","MERCHANDISE");
+                    if (!ProductCategories.ALL.contains(Objects.toString(p.category(),"")))
+                        item.put("category","MERCHANDISE");
                     if (!Set.of("PREORDER","AVAILABLE","OUT_OF_STOCK","ANNOUNCED").contains(
                             Objects.toString(p.availability(),""))) item.put("availability","ANNOUNCED");
                     if (p.description()==null || !chunk.contains(p.description())) item.put("description",page.description());
