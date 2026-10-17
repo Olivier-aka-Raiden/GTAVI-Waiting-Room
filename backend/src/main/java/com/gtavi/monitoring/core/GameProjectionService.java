@@ -83,7 +83,8 @@ public class GameProjectionService {
             trailer.setCreatedAt(OffsetDateTime.now()); trailer.setDiscoveredAt(OffsetDateTime.now());
         }
         trailer.setTitle(title); trailer.setVideoUrl(url); trailer.setOfficial(true);
-        trailer.setSourceUrl(sourceUrl); trailer.setMediaType(fact.path("mediaType").asText("OTHER_VIDEO"));
+        trailer.setSourceUrl(sourceUrl);
+        trailer.setMediaType(RockstarVideoType.normalize(title, fact.path("mediaType").asText(null)));
         String image=OfficialPage.resolve(sourceUrl,fact.path("thumbnailUrl").asText());
         if(image!=null) trailer.setThumbnailUrl(image);
         try { trailer.setPublicationDate(OffsetDateTime.parse(fact.path("publicationDate").asText())); }

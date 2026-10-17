@@ -27,4 +27,11 @@ class GameProjectionTest extends RedisBackedTest {
         given().get("/api/v1/games/gta-vi").then().statusCode(200)
             .body("release.date",equalTo("2026-12-01")).body("latestTrailer.title",equalTo("Future Trailer"));
     }
+
+    @Test void extendedLookFromRockstarIsProjectedIntoTrailerCarousel() throws Exception {
+        var videos=json.readTree("{\"videos\":[{\"title\":\"Grand Theft Auto VI: An Extended Look\",\"mediaType\":\"OTHER_VIDEO\",\"videoUrl\":\"https://www.youtube.com/watch?v=extended-look\"}]}");
+        projections.project("ROCKSTAR_YOUTUBE","https://www.youtube.com/",videos);
+        assertEquals(1,persistence.getTrailers("GTA_VI","TRAILER").stream()
+            .filter(video->"Grand Theft Auto VI: An Extended Look".equals(video.getTitle())).count());
+    }
 }

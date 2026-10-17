@@ -15,6 +15,7 @@ public interface YoutubeRssExtractor {
         For an RSS item, use its link text and pubDate; convert an explicit RFC-822 date to ISO-8601.
         Do not mix one entry's title with another entry's link or timestamp.
         Include only titles explicitly identifying GTA VI, Grand Theft Auto VI, GTA 6 or Grand Theft Auto 6.
+        For example, include "Grand Theft Auto VI: An Extended Look" and classify it as TRAILER.
         The Rockstar channel name alone does not make a video GTA VI-related.
         """)
     @UserMessage("Extract GTA VI videos from this YouTube feed evidence:\n{{xml}}")

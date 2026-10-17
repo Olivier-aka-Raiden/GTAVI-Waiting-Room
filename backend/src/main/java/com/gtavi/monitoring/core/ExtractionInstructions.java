@@ -25,6 +25,7 @@ public final class ExtractionInstructions {
         title: copy the video's own title. Do not append GTA VI to make an unrelated video look relevant.
         mediaType: TRAILER, GAMEPLAY, CHARACTER_CLIP, COVER_ART_ANIMATION, or OTHER_VIDEO.
         Classify from explicit video context: trailer, gameplay, character clip, or animated cover art.
+        Treat official long-form previews titled "Extended Look" as TRAILER, even when the title omits that word.
         A static cover image or screenshot is not a video. Use OTHER_VIDEO for an unfamiliar actual video.
         videoUrl: copy an observed playable video or watch-page URL, retaining query parameters such as video IDs.
         Never construct a URL from a title or an ID alone. A video item requires both title and videoUrl.

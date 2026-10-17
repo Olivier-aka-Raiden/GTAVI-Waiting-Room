@@ -1,6 +1,7 @@
 package com.gtavi.monitoring.diff;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.gtavi.monitoring.core.RockstarVideoType;
 import com.gtavi.domain.ChangeEvent;
 import jakarta.enterprise.context.ApplicationScoped;
 
@@ -204,12 +205,12 @@ public class DiffEngine {
         for (JsonNode v : videos) {
             if (v.has("title") && v.get("title").asText().equals(title)
                 && v.has("mediaType")) {
-                return v.get("mediaType").asText();
+                return RockstarVideoType.normalize(title, v.get("mediaType").asText());
             }
         }
         // Heuristic fallback
         String lower = title.toLowerCase();
-        if (lower.contains("trailer")) return "TRAILER";
+        if (lower.contains("trailer") || lower.contains("extended look")) return "TRAILER";
         if (lower.contains("gameplay")) return "GAMEPLAY";
         return "OTHER_VIDEO";
     }

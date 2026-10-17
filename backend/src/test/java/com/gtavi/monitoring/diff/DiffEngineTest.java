@@ -141,6 +141,16 @@ class DiffEngineTest {
         assertEquals("MAJOR", events.get(0).getPriority());
     }
 
+    @Test
+    void testYouTubeExtendedLookIsDetectedAsTrailer() throws Exception {
+        var prev = mapper.readTree("{\"videos\":[]}");
+        var curr = mapper.readTree("{\"videos\":[" +
+            "{\"title\":\"Grand Theft Auto VI: An Extended Look\",\"mediaType\":\"OTHER_VIDEO\",\"videoUrl\":\"https://youtube.com/watch?v=extended\"}]}");
+        List<ChangeEvent> events = engine.diff("ROCKSTAR_YOUTUBE", "http://test", prev, curr);
+        assertEquals(1, events.size());
+        assertEquals("NEW_TRAILER", events.get(0).getEventType());
+    }
+
     // ── Pre-order ───────────────────────────────────────────────────────
 
     @Test
