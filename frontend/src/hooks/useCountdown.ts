@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { releaseDayStatus } from './releaseDay';
 
 interface CountdownResult {
   days: number;
@@ -6,6 +7,8 @@ interface CountdownResult {
   minutes: number;
   seconds: number;
   isReleased: boolean;
+  isReleaseDay: boolean;
+  celebrationEndsAt: number | null;
   totalSeconds: number;
 }
 
@@ -15,13 +18,13 @@ interface CountdownResult {
  */
 export function useCountdown(releaseDate: string | null): CountdownResult {
   const [result, setResult] = useState<CountdownResult>({
-    days: 0, hours: 0, minutes: 0, seconds: 0, isReleased: false, totalSeconds: 0,
+    days: 0, hours: 0, minutes: 0, seconds: 0, isReleased: false, isReleaseDay: false, celebrationEndsAt: null, totalSeconds: 0,
   });
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const calculate = useCallback(() => {
     if (!releaseDate) {
-      setResult({ days: 0, hours: 0, minutes: 0, seconds: 0, isReleased: false, totalSeconds: 0 });
+      setResult({ days: 0, hours: 0, minutes: 0, seconds: 0, isReleased: false, isReleaseDay: false, celebrationEndsAt: null, totalSeconds: 0 });
       return;
     }
 
@@ -29,9 +32,10 @@ export function useCountdown(releaseDate: string | null): CountdownResult {
     const target = new Date(releaseDate + 'T00:00:00');
     const now = new Date();
     const diff = target.getTime() - now.getTime();
+    const status = releaseDayStatus(releaseDate, now);
 
     if (diff <= 0) {
-      setResult({ days: 0, hours: 0, minutes: 0, seconds: 0, isReleased: true, totalSeconds: 0 });
+      setResult({ days: 0, hours: 0, minutes: 0, seconds: 0, ...status, totalSeconds: 0 });
       return;
     }
 
@@ -41,7 +45,7 @@ export function useCountdown(releaseDate: string | null): CountdownResult {
       hours: Math.floor((totalSeconds % 86400) / 3600),
       minutes: Math.floor((totalSeconds % 3600) / 60),
       seconds: totalSeconds % 60,
-      isReleased: false,
+      ...status,
       totalSeconds,
     });
   }, [releaseDate]);

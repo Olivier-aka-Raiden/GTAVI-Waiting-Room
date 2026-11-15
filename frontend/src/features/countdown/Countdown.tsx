@@ -51,20 +51,36 @@ interface CountdownProps {
   minutes: number;
   seconds: number;
   isReleased: boolean;
+  isReleaseDay: boolean;
+  celebrationEndsAt: number | null;
 }
 
-export function Countdown({ days, hours, minutes, seconds, isReleased }: CountdownProps) {
+export function Countdown({ days, hours, minutes, seconds, isReleased, isReleaseDay, celebrationEndsAt }: CountdownProps) {
   const confettiFired = useRef(false);
 
-  // Fire confetti once on release
+  // Remove any remaining particles at the next local midnight.
   useEffect(() => {
-    if (isReleased && !confettiFired.current) {
+    if (!isReleaseDay || celebrationEndsAt === null) {
+      if (isReleased) confetti.reset();
+      return;
+    }
+    const timer = window.setTimeout(() => confetti.reset(), Math.max(0, celebrationEndsAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [isReleased, isReleaseDay, celebrationEndsAt]);
+
+  // Celebrate once per mount, only during the local release day.
+  useEffect(() => {
+    if (isReleaseDay && celebrationEndsAt !== null && !confettiFired.current) {
       confettiFired.current = true;
       const duration = 4000;
-      const end = Date.now() + duration;
+      const end = Math.min(Date.now() + duration, celebrationEndsAt);
       const colors = ['#FFB2C6', '#FFF9CB', '#E6FFA3', '#FFD4A8', '#4B2F54'];
 
       (function frame() {
+        if (Date.now() >= end) {
+          if (Date.now() >= celebrationEndsAt) confetti.reset();
+          return;
+        }
         confetti({
           particleCount: 3,
           angle: 60,
@@ -79,10 +95,10 @@ export function Countdown({ days, hours, minutes, seconds, isReleased }: Countdo
           origin: { x: 1, y: 0.7 },
           colors,
         });
-        if (Date.now() < end) requestAnimationFrame(frame);
+        requestAnimationFrame(frame);
       })();
     }
-  }, [isReleased]);
+  }, [isReleaseDay, celebrationEndsAt]);
 
   if (isReleased) {
     return (

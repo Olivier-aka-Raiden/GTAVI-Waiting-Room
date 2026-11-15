@@ -55,6 +55,7 @@ function VerificationBadge({ lastCheck, healthy = true }: { lastCheck: string | 
 
 function HeroSection({ game }: { game: GameOverview }) {
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const countdown = useCountdown(game.release.date);
 
   const shareCountdown = async () => {
     const text = `GTA VI releases on ${new Date(game.release.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} · track the countdown with me!`;
@@ -105,12 +106,14 @@ function HeroSection({ game }: { game: GameOverview }) {
         />
       </div>
 
-      <h2 className="text-accent-gold text-sm sm:text-base uppercase tracking-[0.25em] mb-6 font-medium" style={{ fontFamily: 'var(--font-display)' }}>
-        Releases in
-      </h2>
+      {!countdown.isReleased && (
+        <h2 className="text-accent-gold text-sm sm:text-base uppercase tracking-[0.25em] mb-6 font-medium" style={{ fontFamily: 'var(--font-display)' }}>
+          Releases in
+        </h2>
+      )}
 
       {/* Countdown */}
-      <CountdownWrapper releaseDate={game.release.date} />
+      <Countdown {...countdown} />
 
       {/* Release date */}
       <p className="text-lg sm:text-xl text-text-primary font-semibold mt-5" style={{ fontFamily: 'var(--font-display)' }}>
@@ -120,9 +123,11 @@ function HeroSection({ game }: { game: GameOverview }) {
       </p>
 
       {/* Platforms */}
-      <p className="text-sm text-text-muted/80 mt-2 font-medium">
-        PlayStation 5 · Xbox Series X|S
-      </p>
+      {!countdown.isReleased && (
+        <p className="text-sm text-text-muted/80 mt-2 font-medium">
+          PlayStation 5 · Xbox Series X|S
+        </p>
+      )}
 
       {/* Verification */}
       <div className="mt-4 flex items-center justify-center gap-4">
@@ -146,11 +151,6 @@ function HeroSection({ game }: { game: GameOverview }) {
       </div>
     </div>
   );
-}
-
-function CountdownWrapper({ releaseDate }: { releaseDate: string }) {
-  const { days, hours, minutes, seconds, isReleased } = useCountdown(releaseDate);
-  return <Countdown days={days} hours={hours} minutes={minutes} seconds={seconds} isReleased={isReleased} />;
 }
 
 // ── Section wrapper with reveal animation ──────────────────────────────────
