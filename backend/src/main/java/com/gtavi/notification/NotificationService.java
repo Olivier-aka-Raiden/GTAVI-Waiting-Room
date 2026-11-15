@@ -81,43 +81,27 @@ public class NotificationService {
     }
 
     /**
-     * A push alert must describe something new. Items whose verified publication date is
-     * older than the alert window are persisted for the timeline but never pushed, and an
-     * equivalent alert for the same item is only pushed once per window.
+     * Announcements need a recent source date. Verified changes to a previously observed
+     * page and commercial transitions are new occurrences even if the page itself is old.
+     * Event identity and its deliveries are atomically deduplicated by the outbox write.
      */
     private boolean pushable(ChangeEvent event) {
+        if (!"ROCKSTAR_NEWS".equals(event.getSourceCode())) return true;
+        if (event.isSourceChangeVerified() || java.util.Set.of("BACK_IN_STOCK", "OUT_OF_STOCK",
+                "PRICE_CHANGED", "COLLECTIBLE_PREORDER_OPENED", "MUSIC_PREORDER_OPENED")
+                .contains(event.getEventType())) return true;
         OffsetDateTime published = event.getSourcePublishedAt();
-        if (published != null && published.isBefore(
+        if (published == null) {
+            Log.infof("Not pushing %s: source publication date is unknown", event.getEventType());
+            return false;
+        }
+        if (published.isBefore(
                 OffsetDateTime.now(ZoneOffset.UTC).minusDays(Math.max(1, maxSourceAgeDays)))) {
             Log.infof("Not pushing %s: source publication date %s is older than %d days",
                 event.getEventType(), published, Math.max(1, maxSourceAgeDays));
             return false;
         }
-        if (!"ROCKSTAR_NEWS".equals(event.getSourceCode())) return true;
-        String fingerprint = notificationFingerprint(event);
-        boolean claimed = persistence.claimNotificationFingerprint(
-            com.gtavi.news.OfficialPage.fingerprint(fingerprint),
-            Duration.ofDays(Math.max(1, maxSourceAgeDays)));
-        if (!claimed) {
-            Log.infof("Not pushing duplicate %s alert (%s)", event.getEventType(), fingerprint);
-        }
-        return claimed;
-    }
-
-    /**
-     * Identity of the user-visible alert: one item never produces two alerts of the same
-     * type on the same day, even when a re-observation created a new event key. A later
-     * genuine update on another day keeps its own alert.
-     */
-    static String notificationFingerprint(ChangeEvent event) {
-        String date = event.getSourcePublishedAt() == null ? "unknown"
-            : event.getSourcePublishedAt().toLocalDate().toString();
-        String detected = event.getDetectedAt() == null ? "unknown"
-            : event.getDetectedAt().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate().toString();
-        String title = event.getTitle() == null ? ""
-            : event.getTitle().toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+", " ").strip();
-        return "news|" + event.getEventType() + "|" + event.getNewValue() + "|" + title
-            + "|" + date + "|" + detected;
+        return true;
     }
 
     public int processPendingDeliveries() {

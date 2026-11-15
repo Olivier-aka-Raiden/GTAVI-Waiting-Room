@@ -63,11 +63,13 @@ public class NewsProcessor {
         article.put("preorderAnnounced",preorder);
         long revision = repository.nextRevision(id);
         var plan = json.createObjectNode();
+        plan.set("events",json.valueToTree(policy.events(article,previous,products,
+            productId -> repository.read("products:"+productId),revision)));
+        article.remove("newlyObservedFactIds");
+        article.remove("sourceEvidenceChanged");
         plan.set("article",article);
         var plannedProducts = plan.putArray("products");
         products.forEach(plannedProducts::add);
-        plan.set("events",json.valueToTree(policy.events(article,previous,products,
-            productId -> repository.read("products:"+productId),revision)));
         repository.write("pending:"+observationId,plan);
     }
     public void replay(String observationId) {

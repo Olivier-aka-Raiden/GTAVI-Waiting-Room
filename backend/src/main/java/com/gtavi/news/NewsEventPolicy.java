@@ -26,20 +26,23 @@ public class NewsEventPolicy {
             events.add(event(article,type,"ANNOUNCED",article.path("title").asText(),article.path("description").asText(),recent(article)));
             return events;
         }
-        var knownFacts=new java.util.HashSet<String>();
-        previous.path("facts").forEach(fact->knownFacts.add(fact.path("id").asText()));
+        var observedFacts=new java.util.HashSet<String>();
+        article.path("newlyObservedFactIds").forEach(fact->observedFacts.add(fact.asText()));
         var newMajorFacts=new java.util.TreeSet<String>();
         for(var fact:article.path("facts")) if("MAJOR".equals(fact.path("importance").asText())
-                && !knownFacts.contains(fact.path("id").asText()))
+                && observedFacts.contains(fact.path("id").asText()))
             newMajorFacts.add(normalize(fact.path("subject").asText())+"|"+normalize(fact.path("value").asText()));
-        boolean promoted="MAJOR".equals(article.path("importance").asText()) && !"MAJOR".equals(previous.path("importance").asText());
         // The occurrence is the new fact set itself, never a per-run counter: recovering
         // the same detail twice must not create a second "new details" alert.
         String factsOccurrence="FACTS:"+OfficialPage.fingerprint(String.join("\n",newMajorFacts));
-        if((!newMajorFacts.isEmpty() && !article.path("observationHash").asText().equals(previous.path("observationHash").asText())) || promoted)
-            events.add(event(article,"MAJOR_OFFICIAL_NEWS",factsOccurrence,
-                article.path("title").asText()+" — new details",article.path("description").asText(),recent(article)));
+        if(!newMajorFacts.isEmpty()) {
+            ChangeEvent update=event(article,"MAJOR_OFFICIAL_NEWS",factsOccurrence,
+                article.path("title").asText()+" — new details",article.path("description").asText(),true);
+            update.setSourceChangeVerified(true);
+            events.add(update);
+        }
         boolean preorder = false;
+        boolean sourceChanged = article.path("sourceEvidenceChanged").asBoolean();
         for (ObjectNode product : products) {
             JsonNode old = oldProduct.apply(product.path("id").asText());
             for (JsonNode offer : product.path("offers")) {
@@ -50,17 +53,17 @@ public class NewsEventPolicy {
                 String occurrence = offer.path("id").asText() + ":" + revision;
                 String name = product.path("name").asText();
                 if ("OUT_OF_STOCK".equals(before) && ("AVAILABLE".equals(after) || "PREORDER".equals(after)))
-                    events.add(event(article,"BACK_IN_STOCK",occurrence,name+" is back in stock","An official offer is available again.",true));
+                    events.add(event(article,"BACK_IN_STOCK",occurrence,name+" is back in stock","An official offer is available again.",sourceChanged));
                 else if (!"OUT_OF_STOCK".equals(before) && "OUT_OF_STOCK".equals(after) && prior != null)
-                    events.add(event(article,"OUT_OF_STOCK",occurrence,name+" is out of stock","The official offer is currently out of stock.",true));
+                    events.add(event(article,"OUT_OF_STOCK",occurrence,name+" is out of stock","The official offer is currently out of stock.",sourceChanged));
                 if (prior != null && prior.hasNonNull("price") && offer.hasNonNull("price")
                         && prior.path("price").decimalValue().compareTo(offer.path("price").decimalValue()) != 0)
                     events.add(event(article,"PRICE_CHANGED",occurrence,name+" price updated",
-                        prior.path("price").asText()+" → "+offer.path("price").asText()+" "+offer.path("currency").asText(),true));
+                        prior.path("price").asText()+" → "+offer.path("price").asText()+" "+offer.path("currency").asText(),sourceChanged));
             }
         }
         if (preorder) events.add(event(article,"COLLECTIBLE".equals(category) ? "COLLECTIBLE_PREORDER_OPENED" : "MUSIC_PREORDER_OPENED",
-            "PREORDER:"+revision,article.path("title").asText()+" — pre-orders open","An official pre-order link is now available.",true));
+            "PREORDER:"+revision,article.path("title").asText()+" — pre-orders open","An official pre-order link is now available.",sourceChanged));
         return events;
     }
     private JsonNode findOffer(JsonNode product,String id) {
@@ -72,7 +75,7 @@ public class NewsEventPolicy {
     }
     private boolean recent(JsonNode article) {
         OffsetDateTime published=publishedAt(article);
-        return published==null || published.isAfter(OffsetDateTime.now().minusDays(lookbackDays));
+        return published!=null && published.isAfter(OffsetDateTime.now().minusDays(lookbackDays));
     }
     /** Verified publication date, or null when the source never stated one. */
     private static OffsetDateTime publishedAt(JsonNode article) {

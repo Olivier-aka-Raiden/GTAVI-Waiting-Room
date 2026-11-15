@@ -42,6 +42,7 @@ class NewsPipelineTest extends RedisBackedTest {
     @Test void realAlbumShellIsVisibleAndNotifiedDespiteAiFailure() throws Exception {
         persistence.registerDevice("album-device","test-token","WEB","en","1");
         var article=offlineAnalyzer().analyze(OfficialPage.parse(ARTICLE,fixture("album-article.html")));
+        article.put("publishedAt",OffsetDateTime.now().toString());
         assertTrue(article.path("relevant").asBoolean());
         assertTrue(article.path("enrichmentPending").asBoolean());
         assertEquals("MUSIC",article.path("category").asText());

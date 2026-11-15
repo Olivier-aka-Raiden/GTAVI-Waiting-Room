@@ -189,7 +189,7 @@ class NotificationServiceTest extends RedisBackedTest {
     }
 
     @Test
-    void onePublishedItemNeverPushesTheSameAlertTwiceInADay() {
+    void replayingAnOccurrenceNeverQueuesTheSameAlertTwice() {
         String unique = UUID.randomUUID().toString();
         String installationId = "outbox-news-" + unique;
         String token = "token-news-" + unique;
@@ -202,12 +202,43 @@ class NotificationServiceTest extends RedisBackedTest {
         assertNotNull(delivery.data().get("publishedAt"),
             "The alert must carry the verified publication date");
 
-        // The same article re-observed with a new event key: recorded, never pushed again.
+        // Replaying the same source occurrence keeps its stable key across days.
         ChangeEvent duplicate = newsEvent(unique, 6);
+        duplicate.setDeduplicationKey(first.getDeduplicationKey());
+        duplicate.setDetectedAt(first.getDetectedAt().plusDays(7));
         var queued = service.saveEventAndQueue(duplicate);
-        assertTrue(queued.created(), "The timeline still records the observation");
+        assertFalse(queued.created());
         assertEquals(0, queued.deliveriesQueued());
-        assertNull(persistence.getNotificationDelivery(duplicate.getId(), installationId));
+        assertEquals(first.getId(), duplicate.getId());
+    }
+
+    @Test
+    void distinctVerifiedChangesAndRestocksOnAnOldPageRemainPushable() {
+        String unique = UUID.randomUUID().toString();
+        register("old-page-" + unique, "old-page-token-" + unique);
+        ChangeEvent first = newsEvent(unique, 0);
+        first.setSourcePublishedAt(OffsetDateTime.now().minusDays(90));
+        first.setSourceChangeVerified(true);
+        ChangeEvent second = newsEvent(unique, 1);
+        second.setSourcePublishedAt(first.getSourcePublishedAt());
+        second.setSourceChangeVerified(true);
+        ChangeEvent restock = newsEvent(unique, 2);
+        restock.setSourcePublishedAt(first.getSourcePublishedAt());
+        restock.setEventType("BACK_IN_STOCK");
+        assertEquals(1, service.saveEventAndQueue(first).deliveriesQueued());
+        assertEquals(1, service.saveEventAndQueue(second).deliveriesQueued());
+        assertEquals(1, service.saveEventAndQueue(restock).deliveriesQueued());
+    }
+
+    @Test
+    void anUndatedUnverifiedAnnouncementIsStoredWithoutAPush() {
+        String unique = UUID.randomUUID().toString();
+        register("undated-" + unique, "undated-token-" + unique);
+        ChangeEvent event = newsEvent(unique, 0);
+        event.setSourcePublishedAt(null);
+        var result = service.saveEventAndQueue(event);
+        assertTrue(result.created());
+        assertEquals(0, result.deliveriesQueued());
     }
 
     @Test

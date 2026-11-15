@@ -72,6 +72,7 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
                         repository.assertOwner(sourceCode(),lease);
                         processor.process(article);
                         pending=article.path("enrichmentPending").asBoolean();
+                        if(!pending && page.complete()) recordEvidence(page,id);
                     }
                     int retry=pending?300:publishable(url)?1800:300;
                     repository.recordCheck(id,pending?"PENDING":"COMPLETE",pending?"Details incomplete; resuming automatically":"",retry);
@@ -120,11 +121,36 @@ public class OfficialNewsMonitor implements GameSourceMonitor {
         var cache=json.createObjectNode().put("hash",hash);
         cache.set("article",article);
         repository.cache("cache:"+id,cache);
-        // Retain source evidence for replay/auditing independently of the AI output.
-        var evidence=json.createObjectNode().put("sourceUrl",page.url()).put("content",page.content())
-            .put("structured",page.structured()).put("fetchedAt",java.time.OffsetDateTime.now().toString());
-        repository.cache("evidence:"+id,evidence);
+        // A fact is newly observed only if its value was absent from this same page's
+        // previous successful observation. Changes to links or AI wording alone do not qualify.
+        JsonNode evidence=repository.read("evidence:"+id);
+        var newFacts=article.putArray("newlyObservedFactIds");
+        article.put("sourceEvidenceChanged",false);
+        if(evidence!=null && evidence.path("complete").asBoolean()
+                && evidence.hasNonNull("content") && page.complete()) {
+            String before=normalizeEvidence(evidence.path("content").asText()+"\n"+evidence.path("structured").asText());
+            String after=normalizeEvidence(page.content()+"\n"+page.structured());
+            article.put("sourceEvidenceChanged",!before.equals(after));
+            if(!article.path("enrichmentPending").asBoolean())
+                for(JsonNode fact:article.path("facts")) {
+                    String value=normalizeEvidence(fact.path("value").asText());
+                    if(!value.isBlank() && after.contains(value) && !before.contains(value))
+                        newFacts.add(fact.path("id").asText());
+                }
+        }
         return article;
+    }
+
+    private static String normalizeEvidence(String value) {
+        return value.toLowerCase(java.util.Locale.ROOT).replaceAll("\\s+"," ").strip();
+    }
+
+    void recordEvidence(OfficialPage page,String id) {
+        // Advance the comparison baseline only after the observation is processed.
+        var evidence=json.createObjectNode().put("sourceUrl",page.url()).put("content",page.content())
+            .put("structured",page.structured()).put("complete",true)
+            .put("fetchedAt",java.time.OffsetDateTime.now().toString());
+        repository.cache("evidence:"+id,evidence);
     }
 
     static boolean discoverable(String url) {

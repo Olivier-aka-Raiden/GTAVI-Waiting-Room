@@ -27,6 +27,7 @@ public class ChangeEvent {
      * re-announcing something that was already published long ago.
      */
     private OffsetDateTime sourcePublishedAt;
+    private boolean sourceChangeVerified;
     private boolean userVisible;
     private boolean notificationEligible;
     private OffsetDateTime createdAt;
@@ -61,6 +62,8 @@ public class ChangeEvent {
     public void setDetectedAt(OffsetDateTime detectedAt) { this.detectedAt = detectedAt; }
     public OffsetDateTime getSourcePublishedAt() { return sourcePublishedAt; }
     public void setSourcePublishedAt(OffsetDateTime sourcePublishedAt) { this.sourcePublishedAt = sourcePublishedAt; }
+    public boolean isSourceChangeVerified() { return sourceChangeVerified; }
+    public void setSourceChangeVerified(boolean sourceChangeVerified) { this.sourceChangeVerified = sourceChangeVerified; }
     public boolean isUserVisible() { return userVisible; }
     public void setUserVisible(boolean userVisible) { this.userVisible = userVisible; }
     public boolean isNotificationEligible() { return notificationEligible; }

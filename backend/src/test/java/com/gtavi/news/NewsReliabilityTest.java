@@ -163,9 +163,61 @@ class NewsReliabilityTest extends RedisBackedTest {
         assertEquals(1, eventCount("MAJOR_OFFICIAL_NEWS"));
         item.put("observationHash", "changed");
         item.withArray("facts").addObject().put("id", "date").put("importance", "MAJOR").put("value", "New date");
+        item.putArray("newlyObservedFactIds").add("date");
         processor.process(item);
         processor.process(item);
         assertEquals(2, eventCount("MAJOR_OFFICIAL_NEWS"));
+    }
+
+    @Test void onlyNewSourceTextCanTriggerAnUpdateForAnOldUndatedPage() {
+        String url="https://www.rockstargames.com/VI/music";
+        String id=OfficialPage.identity(url);
+        persistence.registerDevice("music-source-device","music-source-token","WEB","en","1");
+        var monitor=new OfficialNewsMonitor();
+        monitor.repository=repository; monitor.json=json;
+        monitor.analyzer=new NewsAnalyzer() {
+            @Override public ObjectNode analyze(OfficialPage page, ExtractionBudget budget, ObjectNode prior) {
+                var result=NewsReliabilityTest.this.json.createObjectNode().put("sourceUrl",url).put("title","GTA VI album")
+                    .put("description","Official music").put("category","MUSIC").put("importance","MAJOR")
+                    .put("relevant",true).put("enrichmentPending",false);
+                var facts=result.putArray("facts");
+                facts.addObject().put("id",page.content().contains("reworded") ? "old-reworded" : "old")
+                    .put("subject","Radio").put("value","Existing radio station").put("importance","MAJOR");
+                if(page.content().contains("Brand new station"))
+                    facts.addObject().put("id","new").put("subject","Radio")
+                        .put("value","Brand new station").put("importance","MAJOR");
+                result.putArray("products");
+                return result;
+            }
+        };
+        var original=new OfficialPage(url,"GTA VI album","Official music","","",
+            "Existing radio station", "",List.of(),true);
+        repository.cache("evidence:"+id,json.createObjectNode().put("content","legacy incomplete"));
+        var first=monitor.extract(original,id,new ExtractionBudget(1,1000));
+        assertFalse(first.path("sourceEvidenceChanged").asBoolean());
+        assertTrue(first.path("newlyObservedFactIds").isEmpty(),"Legacy snapshots establish a quiet baseline");
+        processor.process(first);
+        monitor.recordEvidence(original,id);
+        var announcement=persistence.getEvents("GTA_VI",0,100).stream()
+            .filter(event->"MUSIC_ANNOUNCED".equals(event.getEventType())).findFirst().orElseThrow();
+        assertNull(persistence.getNotificationDelivery(announcement.getId(),"music-source-device"));
+
+        var reworded=new OfficialPage(url,original.title(),original.description(),"","",
+            "Existing radio station reworded", "",List.of("https://example.com/new-link"),true);
+        processor.process(monitor.extract(reworded,id,new ExtractionBudget(1,1000)));
+        monitor.recordEvidence(reworded,id);
+        assertEquals(0,eventCount("MAJOR_OFFICIAL_NEWS"));
+
+        var changed=new OfficialPage(url,original.title(),original.description(),"","",
+            "Existing radio station reworded. Brand new station", "",List.of(),true);
+        processor.process(monitor.extract(changed,id,new ExtractionBudget(1,1000)));
+        monitor.recordEvidence(changed,id);
+        var update=persistence.getEvents("GTA_VI",0,100).stream()
+            .filter(event->"MAJOR_OFFICIAL_NEWS".equals(event.getEventType())).findFirst().orElseThrow();
+        assertTrue(update.isSourceChangeVerified());
+        assertNotNull(persistence.getNotificationDelivery(update.getId(),"music-source-device"));
+        processor.process(monitor.extract(changed,id,new ExtractionBudget(1,1000)));
+        assertEquals(1,eventCount("MAJOR_OFFICIAL_NEWS"));
     }
 
     @Test void diagnosticFailuresPersistUntilThatPageRecovers() {
