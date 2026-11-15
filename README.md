@@ -72,7 +72,7 @@ The app uses **LangChain4j + DeepSeek** with typed DTOs for candidate extraction
 |-----------|---------|---------|
 | `RockstarMainExtractor` | `RockstarMainData` | Release date, platforms, pre-order state |
 | `RockstarEditionsExtractor` | `RockstarEditionsData` | Edition list, Collector detection |
-| `RockstarMediaExtractor` | `RockstarMediaData` | Trailers, video classification |
+| `RockstarMediaExtractor` | `RockstarMediaData` | Media-page observations; the carousel uses the verified YouTube feed |
 | `RetailerProductsExtractor` | `RetailerProductsData` | Product listings, price, availability |
 
 ### Why this is better than CSS selectors
@@ -121,6 +121,9 @@ The app uses **LangChain4j + DeepSeek** with typed DTOs for candidate extraction
 - Event deduplication, the event record, its visible-event index, and one uniquely keyed notification delivery per `(eventId, installationId)` are created atomically by Redis. Replaying the same source state creates neither another event nor another delivery.
 - Notification deliveries move independently through `QUEUED`, `SENT`, `RETRY`, `INVALID_TOKEN`, and `DEAD`. A failed or invalid device never stops the rest of the batch; transient failures use exponential backoff, completed devices are not selected again, and an interrupted batch resumes from its remaining rows on the next scheduler run.
 - Device/token ownership changes and offer/entity index moves use atomic Redis scripts, preventing records and their lookup indexes from diverging during concurrent writes or process interruption.
+- The backend uses Quarkus 3.40.1.2 LTS, including the aligned Camel and LangChain4j platform BOMs.
+- Official videos use the Rockstar Games YouTube Atom feed (`UC6VcWc1rAoWdBCM0JxrRQ3A`). Camel Atom's feed reader parses each entry; channel and video identities and GTA VI relevance in the entry title or description are verified before projection. Distinct uploads, including Shorts that share a title with another video, retain their own identities. The carousel includes official GTA VI videos even when their title is not classified as a trailer. The feed contains only recent uploads; older videos remain available if previously recorded or seeded.
+- A new monitoring identity avoids replaying observations from the former misconfigured YouTube channel. At startup, its legacy video and visible-event indexes are quarantined, while underlying records remain for audit; undelivered legacy notifications are marked dead when claimed.
 - Every monitor honors its own interval even though Cloud Scheduler can trigger the orchestration endpoint every ten minutes.
 - Cloud Scheduler calls `POST /internal/jobs/cleanup-snapshots` once daily with the same `X-Internal-Secret` used by monitoring. Full snapshots are kept for 30 days; older records become daily hash summaries, while the latest success and failure per source remain available in full.
 - Monitoring health is based on the latest result from all enabled sources. A stale or failed source makes the public status degraded.
@@ -166,7 +169,7 @@ GTAVI-Waiting-Room/
 
 ## Quick Start
 
-Requirements: Java 26, Maven or the included Maven wrapper, Node.js 22, npm, and Redis 7 for local development.
+Requirements: Java 25, Maven or the included Maven wrapper, Node.js 22, npm, and Redis 7 for local development.
 
 ```bash
 # Backend
@@ -183,7 +186,7 @@ docker run -d --name gtavi-redis -p 6379:6379 redis:7.4-alpine
 
 ```
 
-Production requires `UPSTASH_REDIS_URL`, copied exactly from Upstash's TCP/TLS connection dialog. The value starts with `rediss://`. Set it on the service running the Quarkus backend; secrets configured for the Vercel frontend are not automatically visible to Cloud Run.
+Production requires `REDIS_URL`, copied exactly from Upstash's TCP/TLS connection dialog. The value starts with `rediss://`. In Cloud Run, map the `UPSTASH_REDIS_URL` secret to the `REDIS_URL` environment variable. Secrets configured for the Vercel frontend are not automatically visible to the backend.
 
 Set `SNAPSHOT_RETENTION_DAYS` to control full-snapshot retention (default `30`). Both internal Cloud Scheduler endpoints require `X-Internal-Secret`: `POST /internal/jobs/check-updates` triggers monitoring and `POST /internal/jobs/cleanup-snapshots` performs retention cleanup. The deployment commands in [docs/deploy-gcp.sh](./docs/deploy-gcp.sh) configure the ten-minute monitoring job and daily cleanup job.
 

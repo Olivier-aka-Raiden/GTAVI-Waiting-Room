@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { API_BASE } from '../../api/config';
+import { productSection } from './categories';
 import { ProductCard, type NewsItem, type Collectible } from './NewsCards';
 import { NewsCarousel } from './NewsCarousel';
 const BASE = API_BASE + '/api/v1/games/gta-vi';
@@ -61,8 +62,8 @@ export function NewsSection() {
   useEffect(() => {
     if (selected) document.getElementById('section-news')?.scrollIntoView({ block: 'start' });
   }, [selected]);
-  const music = products.filter(p => ['MUSIC', 'ALBUM', 'VINYL', 'CD'].includes(p.category));
-  const collectibles = products.filter(p => !['MUSIC', 'ALBUM', 'VINYL', 'CD', 'GAME'].includes(p.category));
+  const music = products.filter(p => productSection(p.category) === 'music');
+  const collectibles = products.filter(p => productSection(p.category) === 'collectibles');
   const articles = selected && !news.some(item => item.id === selected.id) ? [...news, selected] : news;
   return <div className="space-y-6">
     {error && <p role="alert" className="text-accent-orange">{error} <button className="underline min-h-11" onClick={() => { void load('news'); void load('products'); }}>Retry</button></p>}

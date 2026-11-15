@@ -5,7 +5,10 @@ import type { Trailer } from '../../types/game';
 function youtubeId(url: string): string | null {
   try {
     const u = new URL(url);
-    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v');
+    if (u.hostname === 'youtube.com' || u.hostname === 'www.youtube.com') {
+      if (u.pathname.startsWith('/shorts/')) return u.pathname.slice('/shorts/'.length);
+      return u.searchParams.get('v');
+    }
     if (u.hostname === 'youtu.be') return u.pathname.slice(1);
   } catch { /* ignore */ }
   return null;
@@ -29,6 +32,7 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const lastSwipeAt = useRef(0);
 
   // Put the latest trailer first if available
   const ordered = latestTrailer && trailers.length > 0
@@ -57,13 +61,9 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
   const goNext = () => { stopVideo(); setActive(a => (a === ordered.length - 1 ? 0 : a + 1)); };
   const goTo = (i: number) => { stopVideo(); setActive(i); };
 
-  const handlePlay = () => {
+  const handlePlay = (event: React.MouseEvent) => {
+    if (event.detail !== 0 && Date.now() - lastSwipeAt.current < 500) return;
     setPlaying(true);
-    if (iframeRef.current) {
-      // If iframe is already loaded, send play command.
-      // If not yet loaded (first mount), autoplay=1 in src handles it.
-      sendYouTubeCommand(iframeRef.current, 'playVideo');
-    }
   };
 
   // Touch swipe handlers
@@ -76,6 +76,7 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      lastSwipeAt.current = Date.now();
       if (dx > 0) goPrev();
       else goNext();
     }
@@ -101,24 +102,17 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
         <div className="aspect-video">
           {videoId ? (
             <>
-              {/* Always mount the iframe so it's ready; autoplay is handled by the
-                  play button click or postMessage command — never blocked by the
-                  browser because the iframe was already in the DOM during the click. */}
-              <iframe
-                ref={iframeRef}
-                src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
-                title={current.title}
-                allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
-                allowFullScreen
-                className={`w-full h-full ${playing ? '' : 'hidden'}`}
-              />
-              {!playing && (
-                <button
-                  type="button"
-                  onClick={handlePlay}
-                  className="absolute inset-0 block w-full h-full group"
-                  aria-label={`Play ${current.title}`}
-                >
+              {playing ? (
+                <iframe
+                  ref={iframeRef}
+                  src={`https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+                  title={current.title}
+                  allow="accelerometer; autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full"
+                />
+              ) : (
+                <>
                   <img
                     src={current.thumbnailUrl || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`}
                     alt=""
@@ -126,14 +120,17 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
                     height="720"
                     loading="lazy"
                     decoding="async"
-                    className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-opacity"
+                    className="w-full h-full object-cover opacity-85"
                   />
-                  <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
-                    <span className="w-16 h-12 rounded-xl bg-red-600 text-white flex items-center justify-center text-2xl shadow-lg group-hover:scale-105 transition-transform">
-                      ▶
-                    </span>
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={handlePlay}
+                    className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full border border-white/50 bg-white/20 backdrop-blur-md text-white flex items-center justify-center shadow-lg hover:bg-white/30 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white transition-colors"
+                    aria-label={`Play ${current.title}`}
+                  >
+                    <span aria-hidden="true" className="text-2xl ml-1">▶</span>
+                  </button>
+                </>
               )}
             </>
           ) : (
@@ -178,6 +175,9 @@ export function TrailerCarousel({ trailers, latestTrailer }: Props) {
         <h3 className="text-base font-semibold text-text-primary">
           {current.title}
         </h3>
+        {current.videoUrl.includes('/shorts/') && (
+          <span className="text-xs font-semibold text-text-muted">SHORT</span>
+        )}
         {isNew(current) && (
           <span className="text-xs font-bold bg-accent-pink text-text-dark px-2 py-0.5 rounded-full">
             NEW
