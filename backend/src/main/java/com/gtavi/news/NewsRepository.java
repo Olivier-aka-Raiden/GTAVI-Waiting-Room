@@ -19,10 +19,27 @@ public class NewsRepository {
     @Inject ObjectMapper json;
     @ConfigProperty(name="gtavi.redis.key-prefix") String prefix;
     private String key(String suffix) { return prefix + ":news:" + suffix; }
+    // Vert.x applies maxMultiLength to bulk strings as well as arrays. Chunk bytes
+    // on Redis before sending them and reassemble bytes before UTF-8 decoding.
+    private static final String CHUNK_FUNCTION = """
+        local function chunk(value)
+            if not value then return false end
+            local parts={}
+            for i=1,#value,32768 do parts[#parts+1]=string.sub(value,i,i+32767) end
+            if #parts==0 then parts[1]='' end
+            return parts
+        end
+        """;
+    private static final String READ_CHUNKS = CHUNK_FUNCTION + "return chunk(redis.call('GET',KEYS[1]))";
+    private static final String PAGE_CHUNKS = CHUNK_FUNCTION + """
+        local result={}
+        for i=1,#KEYS do result[#result+1]=chunk(redis.call('GET',KEYS[i])) end
+        return result
+        """;
+
     public JsonNode read(String suffix) {
-        String raw = redis.value(String.class).get(key(suffix));
-        try { return raw == null ? null : json.readTree(raw); }
-        catch (Exception e) { throw new IllegalStateException("Invalid news record " + suffix, e); }
+        var chunks = redis.execute("EVAL", READ_CHUNKS, "1", key(suffix));
+        return chunks == null ? null : parseRecord(suffix, chunks);
     }
     public void write(String suffix, JsonNode value) { redis.value(String.class).set(key(suffix), value.toString()); }
     public void delete(String suffix) { redis.key().del(key(suffix)); }
@@ -104,7 +121,7 @@ public class NewsRepository {
         }
         return result;
     }
-    /** Sort before pagination, including legacy indexes scored before publication dates were known. */
+    /** Fetch bounded batches, then preserve legacy date sorting and deduplication before slicing. */
     public Map<String, Object> newsPage(int page, int size) {
         var articles = orderedArticles();
         return Map.of("items", articleSlice(articles, page, size), "total", articles.size());
@@ -112,51 +129,87 @@ public class NewsRepository {
     private List<JsonNode> articles(int page, int size) {
         return articleSlice(orderedArticles(), page, size);
     }
-    private List<JsonNode> articleSlice(List<JsonNode> articles, int page, int size) {
-        long start = (long)Math.max(0, page) * Math.clamp(size, 1, 100);
-        return articles.stream().skip(start).limit(Math.clamp(size, 1, 100)).toList();
+    private record ArticleRef(String id, boolean dated, long date, String representedPage) {}
+
+    // Both the index range and every returned bulk string are bounded.
+    private static final int ARTICLE_BATCH_SIZE = 100;
+
+    private io.vertx.mutiny.redis.client.Response readChunkBatch(List<String> keys) {
+        if (keys.isEmpty()) return null;
+        var args = new ArrayList<String>();
+        args.add(PAGE_CHUNKS);
+        args.add(Integer.toString(keys.size()));
+        args.addAll(keys);
+        return redis.execute("EVAL", args.toArray(String[]::new));
     }
-    private List<JsonNode> orderedArticles() {
-        var index = redis.sortedSet(String.class).zrange(key("index:articles"), 0, -1);
-        record Article(JsonNode value, boolean dated, long date, String id) {}
-        var articles = new ArrayList<Article>();
-        if (index != null) for (int offset = 0; offset < index.size(); offset += 100) {
-            int end = Math.min(offset + 100, index.size());
+
+    private List<JsonNode> articleSlice(List<ArticleRef> articles, int page, int size) {
+        int count = Math.clamp(size, 1, 100);
+        long start = (long)Math.max(0, page) * count;
+        if (start >= articles.size()) return List.of();
+        int from = (int)start;
+        int to = Math.min(from + count, articles.size());
+        var keys = new ArrayList<String>();
+        for (int i = from; i < to; i++) keys.add(key("articles:" + articles.get(i).id()));
+        var records = readChunkBatch(keys);
+        var result = new ArrayList<JsonNode>();
+        for (int i = from; i < to; i++) {
+            var chunks = records.get(i - from);
+            if (chunks != null) result.add(parseRecord("articles:" + articles.get(i).id(), chunks));
+        }
+        return result;
+    }
+
+    private List<ArticleRef> orderedArticles() {
+        var articles = new ArrayList<ArticleRef>();
+        var representedPages = new HashSet<String>();
+        var seen = new HashSet<String>();
+        long initialCount = redis.sortedSet(String.class).zcard(key("index:articles"));
+        for (long offset = 0; offset < initialCount; offset += ARTICLE_BATCH_SIZE) {
+            var rows = redis.sortedSet(String.class).zrangeWithScores(key("index:articles"),
+                offset, offset + ARTICLE_BATCH_SIZE - 1);
+            if (rows.isEmpty()) break;
             var keys = new ArrayList<String>();
-            for (int i = offset; i < end; i++) keys.add(key("articles:" + index.get(i)));
-            var records = redis.execute("MGET", keys.toArray(String[]::new));
-            for (int i = offset; i < end; i++) {
-                var raw = records.get(i - offset);
-                if (raw == null) continue;
-                try {
-                    JsonNode article = json.readTree(raw.toString());
-                    Long published = publicationTime(article.path("publishedAt").asText());
-                    long date = published != null ? published : (long)redis.sortedSet(String.class).zscore(key("index:articles"), index.get(i)).orElse(0);
-                    articles.add(new Article(article, published != null, date, index.get(i).toString()));
-                } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
-                    throw new IllegalStateException("Invalid news record articles:" + index.get(i), invalid);
+            for (var row : rows) keys.add(key("articles:" + row.value()));
+            var records = readChunkBatch(keys);
+            if (records == null || records.size() != rows.size())
+                throw new IllegalStateException("Invalid news index batch");
+            for (int i = 0; i < rows.size(); i++) {
+                var row = rows.get(i);
+                String id = row.value();
+                var chunks = records.get(i);
+                if (chunks == null || !seen.add(id)) continue;
+                JsonNode article = parseRecord("articles:" + id, chunks);
+                Long published = publicationTime(article.path("publishedAt").asText());
+                long date = published != null ? published : (long)row.score();
+                String category = article.path("category").asText();
+                articles.add(new ArticleRef(id, published != null, date,
+                    representedPage(category, article.path("sourceUrl").asText())));
+                if (published == null || !Set.of("MUSIC", "COLLECTIBLE").contains(category)) continue;
+                for (String field : List.of("sources", "relationshipLinks"))
+                    for (JsonNode link : article.path(field)) addRepresentedPage(representedPages, category, link.asText());
+                for (JsonNode product : article.path("products")) {
+                    addRepresentedPage(representedPages, category, product.path("purchaseUrl").asText());
+                    for (JsonNode offer : product.path("offers"))
+                        addRepresentedPage(representedPages, category, offer.path("purchaseUrl").asText());
                 }
             }
         }
         // Discovery time is not publication time: undated pages follow verified announcements.
-        articles.sort(Comparator.comparing(Article::dated).reversed()
-            .thenComparing(Comparator.comparingLong(Article::date).reversed()).thenComparing(Article::id));
-        var representedPages = new HashSet<String>();
-        for (Article entry : articles) if (entry.dated()) {
-            JsonNode article = entry.value();
-            String category = article.path("category").asText();
-            if (!Set.of("MUSIC", "COLLECTIBLE").contains(category)) continue;
-            for (String field : List.of("sources", "relationshipLinks"))
-                for (JsonNode link : article.path(field)) addRepresentedPage(representedPages, category, link.asText());
-            for (JsonNode product : article.path("products")) {
-                addRepresentedPage(representedPages, category, product.path("purchaseUrl").asText());
-                for (JsonNode offer : product.path("offers"))
-                    addRepresentedPage(representedPages, category, offer.path("purchaseUrl").asText());
-            }
+        articles.sort(Comparator.comparing(ArticleRef::dated).reversed()
+            .thenComparing(Comparator.comparingLong(ArticleRef::date).reversed()).thenComparing(ArticleRef::id));
+        return articles.stream().filter(entry -> entry.dated() || !representedPages.contains(entry.representedPage()))
+            .toList();
+    }
+
+    private JsonNode parseRecord(String suffix, io.vertx.mutiny.redis.client.Response chunks) {
+        try {
+            var bytes = new java.io.ByteArrayOutputStream();
+            for (var chunk : chunks) bytes.writeBytes(chunk.toBytes());
+            return json.readTree(bytes.toByteArray());
+        } catch (java.io.IOException invalid) {
+            throw new IllegalStateException("Invalid news record " + suffix, invalid);
         }
-        return articles.stream().filter(entry -> entry.dated() || !representedPages.contains(
-            representedPage(entry.value().path("category").asText(), entry.value().path("sourceUrl").asText())))
-            .map(Article::value).toList();
     }
     private static String representedPage(String category, String url) {
         if (!OfficialPage.allowed(url)) return "";
