@@ -153,3 +153,11 @@ test('scroll navigation handles tall sections, reverse scrolling, and the final 
   assert.equal(sectionAtPosition([{ id: 'updates', top: -50 }, { id: 'alerts', top: 500 }], 120, true), 'alerts');
   assert.equal(sectionAtPosition([], 120, false), undefined);
 });
+
+const { productSection } = await componentModule('../src/features/news/categories.ts');
+test('every product category belongs to exactly one rendered section', () => {
+  assert.deepEqual(['MUSIC', 'ALBUM', 'VINYL', 'CD'].map(productSection), ['music', 'music', 'music', 'music']);
+  assert.equal(productSection('GAME'), 'game');
+  assert.equal(productSection('COLLECTIBLE'), 'collectibles');
+  assert.equal(productSection('MERCHANDISE'), 'collectibles');
+});
