@@ -1,16 +1,16 @@
 # Build the Quarkus application inside the image so Cloud Build and local
 # Docker builds do not depend on a pre-populated target directory.
-FROM maven:3.9.11-amazoncorretto-26 AS build
+FROM maven:3.9.11-amazoncorretto-25 AS build
 
 WORKDIR /workspace
-COPY pom.xml mvnw ./
-COPY .mvn .mvn
-RUN ./mvnw --batch-mode dependency:go-offline
+COPY pom.xml ./
+# The build image already provides the same Maven version as the wrapper.
+RUN mvn --batch-mode dependency:go-offline
 
 COPY src src
-RUN ./mvnw --batch-mode package -DskipTests
+RUN mvn --batch-mode package -DskipTests
 
-FROM amazoncorretto:26
+FROM amazoncorretto:25
 ENV LANGUAGE='en_US:en'
 
 WORKDIR /deployments

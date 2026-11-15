@@ -116,6 +116,10 @@ public class NotificationService {
             NotificationDelivery delivery = item.delivery();
             int attempts = delivery.attempts() + 1;
             try {
+                if (persistence.isLegacyYoutubeEvent(delivery.eventId())) {
+                    persistence.markDeliveryDead(item, attempts, "Untrusted legacy YouTube source", now);
+                    continue;
+                }
                 var device = persistence.getActiveDeviceToken(delivery.installationId());
                 if (device == null) {
                     persistence.markDeliveryDead(item, attempts,

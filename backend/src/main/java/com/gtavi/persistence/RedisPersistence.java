@@ -242,10 +242,38 @@ public class RedisPersistence {
     public List<Trailer> getTrailers(String gameCode, String mediaType) {
         List<Trailer> trailers = readSortedEntities(
             indexKey("trailers", "game", gameCode), "trailer", Trailer.class);
-        if (mediaType == null) return trailers;
-        return trailers.stream()
-            .filter(trailer -> mediaType.equals(trailer.getMediaType()))
+        return trailers.stream().filter(RedisPersistence::trustedVideo)
+            .filter(trailer -> mediaType == null || mediaType.equals(trailer.getMediaType()))
             .toList();
+    }
+
+    private static boolean trustedVideo(Trailer trailer) {
+        if (!trailer.isOfficial()) return false;
+        if (com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.URL.equals(trailer.getSourceUrl())) return true;
+        return ("trailer-1".equals(trailer.getId()) && "https://www.youtube.com/watch?v=QdBZY2fkU-0".equals(trailer.getVideoUrl()))
+            || ("trailer-2".equals(trailer.getId()) && "https://www.youtube.com/watch?v=VQRLujxTm3c".equals(trailer.getVideoUrl()));
+    }
+
+    /** Hide data derived from the old, incorrectly configured YouTube channel.
+     * The underlying records remain available for audit; the indexes are rebuilt safely on every startup.
+     */
+    public void quarantineLegacyYoutube() {
+        sets.srem(indexKey("sources"), "ROCKSTAR_YOUTUBE");
+        String legacyUrl = "https://www.youtube.com/feeds/videos.xml?channel_id=UCaWd5_7JhbQBe4dknZhsHJg";
+        String videos = indexKey("trailers", "game", DEFAULT_GAME_CODE);
+        for (String id : sortedSets.zrange(videos, 0, -1)) {
+            Trailer video = read(entityKey("trailer", id), Trailer.class);
+            if (video != null && legacyUrl.equals(video.getSourceUrl())) sortedSets.zrem(videos, id);
+        }
+        String events = indexKey("events", "game", DEFAULT_GAME_CODE, "visible");
+        for (String id : sortedSets.zrange(events, 0, -1)) {
+            if (isLegacyYoutubeEvent(id)) sortedSets.zrem(events, id);
+        }
+    }
+
+    public boolean isLegacyYoutubeEvent(String eventId) {
+        ChangeEvent event = read(entityKey("event", eventId), ChangeEvent.class);
+        return event != null && "ROCKSTAR_YOUTUBE".equals(event.getSourceCode());
     }
 
     public void saveTrailerIfAbsent(Trailer trailer) {

@@ -43,6 +43,21 @@ class NotificationServiceTest extends RedisBackedTest {
     }
 
     @Test
+    void legacyWrongChannelDeliveryIsNeverSent() {
+        String unique = UUID.randomUUID().toString();
+        String installation = "legacy-" + unique;
+        String token = "legacy-token-" + unique;
+        register(installation, token);
+        ChangeEvent legacy = event(unique);
+        legacy.setSourceCode("ROCKSTAR_YOUTUBE");
+        assertEquals(1, service.saveEventAndQueue(legacy).deliveriesQueued());
+        assertEquals(0, service.processPendingDeliveries());
+        assertTrue(sender.calls.isEmpty());
+        assertEquals(NotificationDeliveryStatus.DEAD,
+            persistence.getNotificationDelivery(legacy.getId(), installation).status());
+    }
+
+    @Test
     void partialFailureRetriesOnlyTheFailedInstallation() {
         String unique = UUID.randomUUID().toString();
         String firstInstallation = "outbox-first-" + unique;

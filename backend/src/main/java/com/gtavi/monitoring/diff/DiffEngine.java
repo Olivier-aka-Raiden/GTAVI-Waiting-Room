@@ -54,8 +54,7 @@ public class DiffEngine {
         }
 
         // Detect trailer changes — only for video sources
-        if (sourceCode.equals("ROCKSTAR_MEDIA") || sourceCode.equals("ROCKSTAR_YOUTUBE")
-            || current.has("videos")) {
+        if (com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE.equals(sourceCode)) {
             events.addAll(diffTrailers(sourceCode, sourceUrl, previous, current));
         }
 
@@ -157,11 +156,6 @@ public class DiffEngine {
         added.removeAll(prevTitles);
 
         for (String title : added) {
-            // For YouTube channel, only care about GTA VI videos
-            if (sourceCode.equals("ROCKSTAR_YOUTUBE") && !isGtaViRelated(title)) {
-                continue;
-            }
-
             String videoUrl = getVideoUrl(title, currVideos);
             String mediaType = detectGtaViMediaType(title, currVideos);
             String eventType = "TRAILER".equals(mediaType) ? "NEW_TRAILER" : "NEW_OFFICIAL_VIDEO";
@@ -179,14 +173,6 @@ public class DiffEngine {
         }
 
         return events;
-    }
-
-    /** Check if a video title is related to GTA VI. */
-    private boolean isGtaViRelated(String title) {
-        String lower = title.toLowerCase();
-        return lower.contains("gta vi") || lower.contains("grand theft auto vi")
-            || lower.contains("gta 6") || lower.contains("grand theft auto 6")
-            || lower.contains("trailer") && (lower.contains("gta") || lower.contains("grand theft auto"));
     }
 
     /** Try to extract video URL from the JSON nodes. */

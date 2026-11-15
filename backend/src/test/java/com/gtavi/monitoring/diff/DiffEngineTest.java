@@ -122,10 +122,26 @@ class DiffEngineTest {
         var curr = mapper.readTree("{\"videos\":[" +
             "{\"title\":\"Trailer 1\",\"mediaType\":\"TRAILER\"}," +
             "{\"title\":\"Trailer 2\",\"mediaType\":\"TRAILER\"}]}");
-        List<ChangeEvent> events = engine.diff("ROCKSTAR_MEDIA", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE, "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("NEW_TRAILER", events.get(0).getEventType());
         assertEquals("MAJOR", events.get(0).getPriority());
+    }
+
+    @Test
+    void unverifiedMediaCandidatesDoNotGenerateVideoEvents() throws Exception {
+        var prev = mapper.readTree("{\"videos\":[]}");
+        var curr = mapper.readTree("{\"videos\":[{\"title\":\"Unverified trailer\",\"videoUrl\":\"https://example.com/video\"}]}");
+        assertTrue(engine.diff("ROCKSTAR_MEDIA", "http://test", prev, curr).isEmpty());
+    }
+
+    @Test
+    void verifiedVideoWithGameContextInDescriptionStillCreatesEvent() throws Exception {
+        var prev = mapper.readTree("{\"videos\":[]}");
+        var curr = mapper.readTree("{\"videos\":[{\"title\":\"A Night in Vice City\",\"mediaType\":\"OTHER_VIDEO\",\"videoUrl\":\"https://www.youtube.com/shorts/Rj2Jnbt-5p4\"}]}");
+        var events = engine.diff(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE, "http://test", prev, curr);
+        assertEquals(1, events.size());
+        assertEquals("NEW_OFFICIAL_VIDEO", events.get(0).getEventType());
     }
 
     @Test
@@ -135,7 +151,7 @@ class DiffEngineTest {
             "{\"title\":\"Grand Theft Auto VI Trailer 3\",\"mediaType\":\"TRAILER\"," +
             "\"videoUrl\":\"https://youtube.com/watch?v=abc123\"," +
             "\"publicationDate\":\"2026-07-01\"}]}");
-        List<ChangeEvent> events = engine.diff("ROCKSTAR_YOUTUBE", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE, "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("NEW_TRAILER", events.get(0).getEventType());
         assertEquals("MAJOR", events.get(0).getPriority());
@@ -146,7 +162,7 @@ class DiffEngineTest {
         var prev = mapper.readTree("{\"videos\":[]}");
         var curr = mapper.readTree("{\"videos\":[" +
             "{\"title\":\"Grand Theft Auto VI: An Extended Look\",\"mediaType\":\"OTHER_VIDEO\",\"videoUrl\":\"https://youtube.com/watch?v=extended\"}]}");
-        List<ChangeEvent> events = engine.diff("ROCKSTAR_YOUTUBE", "http://test", prev, curr);
+        List<ChangeEvent> events = engine.diff(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE, "http://test", prev, curr);
         assertEquals(1, events.size());
         assertEquals("NEW_TRAILER", events.get(0).getEventType());
     }

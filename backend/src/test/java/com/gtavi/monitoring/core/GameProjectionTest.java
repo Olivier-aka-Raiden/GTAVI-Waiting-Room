@@ -21,8 +21,8 @@ class GameProjectionTest extends RedisBackedTest {
         assertEquals(LocalDate.of(2026,12,1),persistence.getGame("GTA_VI").getReleaseDate());
         assertTrue(persistence.getEditions("GTA_VI").stream().anyMatch(edition->"Future Edition".equals(edition.getName())));
         var videos=json.readTree("{\"videos\":[{\"title\":\"Future Trailer\",\"mediaType\":\"TRAILER\",\"videoUrl\":\"https://www.youtube.com/watch?v=future\",\"publicationDate\":\"2026-09-26T12:00:00Z\"}]}");
-        projections.project("ROCKSTAR_MEDIA","https://www.rockstargames.com/VI/",videos);
-        projections.project("ROCKSTAR_MEDIA","https://www.rockstargames.com/VI/",videos);
+        projections.project(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE,com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.URL,videos);
+        projections.project(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE,com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.URL,videos);
         assertEquals(1,persistence.getTrailers("GTA_VI",null).stream().filter(video->"Future Trailer".equals(video.getTitle())).count());
         given().get("/api/v1/games/gta-vi").then().statusCode(200)
             .body("release.date",equalTo("2026-12-01")).body("latestTrailer.title",equalTo("Future Trailer"));
@@ -30,7 +30,7 @@ class GameProjectionTest extends RedisBackedTest {
 
     @Test void extendedLookFromRockstarIsProjectedIntoTrailerCarousel() throws Exception {
         var videos=json.readTree("{\"videos\":[{\"title\":\"Grand Theft Auto VI: An Extended Look\",\"mediaType\":\"OTHER_VIDEO\",\"videoUrl\":\"https://www.youtube.com/watch?v=extended-look\"}]}");
-        projections.project("ROCKSTAR_YOUTUBE","https://www.youtube.com/",videos);
+        projections.project(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE,com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.URL,videos);
         assertEquals(1,persistence.getTrailers("GTA_VI","TRAILER").stream()
             .filter(video->"Grand Theft Auto VI: An Extended Look".equals(video.getTitle())).count());
     }

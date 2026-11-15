@@ -25,6 +25,7 @@ public class RedisDataInitializer {
     RedisPersistence persistence;
 
     void onStart(@Observes StartupEvent event) {
+        persistence.quarantineLegacyYoutube();
         seedGame();
         seedEditions();
         seedRetailers();
@@ -137,8 +138,8 @@ public class RedisDataInitializer {
             false, false, 900, 4);
         source("ROCKSTAR_MEDIA", "Rockstar GTA VI Media", "https://www.rockstargames.com/VI/media/videos",
             true, true, 900, 2);
-        source("ROCKSTAR_YOUTUBE", "Rockstar Games YouTube",
-            "https://www.youtube.com/feeds/videos.xml?channel_id=UCaWd5_7JhbQBe4dknZhsHJg",
+        source(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE, "Rockstar Games YouTube",
+            com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.URL,
             true, true, 900, 2);
         source("PS_STORE", "PlayStation Store",
             "https://store.playstation.com/en-ch/search/grand%20theft%20auto%20vi",

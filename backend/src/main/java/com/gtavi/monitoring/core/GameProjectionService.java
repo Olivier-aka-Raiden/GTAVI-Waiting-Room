@@ -29,7 +29,9 @@ public class GameProjectionService {
         }
         if(Set.of("ROCKSTAR_MAIN","ROCKSTAR_STORE","ROCKSTAR_EDITIONS").contains(source))
             for(JsonNode fact:data.path("editions")) edition(fact);
-        if(source.startsWith("ROCKSTAR_")) for(JsonNode fact:data.path("videos")) video(fact,sourceUrl);
+        if(com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.SOURCE.equals(source)
+            && com.gtavi.monitoring.rockstar.RockstarYoutubeFeed.URL.equals(sourceUrl))
+            for(JsonNode fact:data.path("videos")) video(fact,sourceUrl);
     }
     /**
      * The base game edition used for retailer listings without a distinct edition label.

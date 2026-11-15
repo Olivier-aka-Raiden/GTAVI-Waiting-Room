@@ -38,7 +38,7 @@ public class GameResource {
                 .build();
         }
 
-        List<Trailer> trailers = gameService.getTrailers("GTA_VI", "TRAILER");
+        List<Trailer> trailers = gameService.getTrailers("GTA_VI", null);
         List<Edition> editions = gameService.getEditions("GTA_VI");
         List<com.gtavi.domain.ChangeEvent> events = gameService.getEvents("GTA_VI", 0, 5);
         var monitoringHealth = gameService.getMonitoringHealth();
